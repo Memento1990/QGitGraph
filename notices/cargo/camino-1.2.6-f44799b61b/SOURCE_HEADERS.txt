@@ -1,0 +1,27 @@
+Generated attribution/comment excerpts for cargo:camino@1.2.6
+Source: locked, locally installed package. Comment text below is copied without editing.
+These excerpts are NOT a substitute for missing full license terms.
+
+===== build.rs =====
+// Copyright (c) The camino Contributors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+===== src/lib.rs =====
+// Copyright (c) The camino Contributors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+===== src/proptest_impls.rs =====
+// Copyright (c) The camino Contributors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+===== src/serde_impls.rs =====
+// Copyright (c) The camino Contributors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+===== src/tests.rs =====
+// Copyright (c) The camino Contributors
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+===== tests/integration_tests.rs =====
+// Copyright (c) The camino Contributors
+// SPDX-License-Identifier: MIT OR Apache-2.0

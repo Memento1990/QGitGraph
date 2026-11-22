@@ -1,0 +1,54 @@
+[package]
+name = "qgitgraph"
+version = "0.2.2"
+license = "MIT"
+description = "A small independent desktop Git client"
+default-run = "qgitgraph"
+authors = ["QGitGraph contributors"]
+edition = "2021"
+rust-version = "1.85"
+
+[lib]
+name = "qgitgraph_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "process", "io-util", "sync", "time", "macros"] }
+tokio-util = "0.7"
+notify = "8"
+rfd = { version = "0.15", default-features = false }
+arboard = { version = "3", default-features = false }
+encoding_rs = "0.8"
+url = "2"
+semver = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_Security", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_WindowsAndMessaging", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_UI_Shell", "Win32_System_IO", "Win32_Security_Cryptography", "Win32_System_Pipes", "Win32_Globalization", "Win32_Networking_WinHttp"] }
+
+[features]
+host-tests = []
+
+[[bin]]
+name = "qgitgraph-test-probe"
+path = "src/bin/qgitgraph-test-probe.rs"
+required-features = ["host-tests"]
+
+[[test]]
+name = "host_parity"
+path = "tests/host_parity.rs"
+required-features = ["host-tests"]
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = "s"
+strip = true

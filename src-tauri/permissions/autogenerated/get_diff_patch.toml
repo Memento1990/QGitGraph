@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-diff-patch"
+description = "Enables the get_diff_patch command without any pre-configured scope."
+commands.allow = ["get_diff_patch"]
+
+[[permission]]
+identifier = "deny-get-diff-patch"
+description = "Denies the get_diff_patch command without any pre-configured scope."
+commands.deny = ["get_diff_patch"]

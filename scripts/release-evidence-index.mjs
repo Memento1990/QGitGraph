@@ -1,0 +1,4 @@
+import{createHash}from'node:crypto';import{readFile,writeFile}from'node:fs/promises';import{resolve,join,relative}from'node:path';
+const output=resolve(process.argv[2]??'artifacts/v0.2');
+const files={frontend:'final-tests/frontend.json','rust-unit':'final-tests-host-tests-02/rust-unit.json','rust-integration':'final-tests-host-tests-02/rust-integration.json',desktop:'release-payload-final/test-report.json',installer:'install-final-03/test-report.json',resources:'resources-payload-final/test-report.json'};
+const reports=[];for(const[kind,path]of Object.entries(files)){const bytes=await readFile(join(output,path));reports.push({kind,path,sha256:createHash('sha256').update(bytes).digest('hex')});}await writeFile(join(output,'evidence-index.json'),JSON.stringify({schemaVersion:1,reports},null,2),{flag:'wx'});console.log(join(output,'evidence-index.json'));

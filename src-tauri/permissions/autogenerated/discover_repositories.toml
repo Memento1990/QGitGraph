@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-discover-repositories"
+description = "Enables the discover_repositories command without any pre-configured scope."
+commands.allow = ["discover_repositories"]
+
+[[permission]]
+identifier = "deny-discover-repositories"
+description = "Denies the discover_repositories command without any pre-configured scope."
+commands.deny = ["discover_repositories"]

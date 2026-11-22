@@ -1,0 +1,58 @@
+Generated attribution/comment excerpts for cargo:arboard@3.7.0
+Source: locked, locally installed package. Comment text below is copied without editing.
+These excerpts are NOT a substitute for missing full license terms.
+
+===== src/common.rs =====
+/*
+SPDX-License-Identifier: Apache-2.0 OR MIT
+
+Copyright 2022 The Arboard contributors
+
+The project to which this file belongs is licensed under either of
+the Apache 2.0 or the MIT license at the licensee's choice. The terms
+and conditions of the chosen license apply to this file.
+*/
+
+===== src/lib.rs =====
+/*
+SPDX-License-Identifier: Apache-2.0 OR MIT
+
+Copyright 2022 The Arboard contributors
+
+The project to which this file belongs is licensed under either of
+the Apache 2.0 or the MIT license at the licensee's choice. The terms
+and conditions of the chosen license apply to this file.
+*/
+
+===== src/platform/linux/x11.rs =====
+/*
+SPDX-License-Identifier: Apache-2.0 OR MIT
+
+Copyright 2022 The Arboard contributors
+
+The project to which this file belongs is licensed under either of
+the Apache 2.0 or the MIT license at the licensee's choice. The terms
+and conditions of the chosen license apply to this file.
+*/
+
+===== src/platform/osx.rs =====
+/*
+SPDX-License-Identifier: Apache-2.0 OR MIT
+
+Copyright 2022 The Arboard contributors
+
+The project to which this file belongs is licensed under either of
+the Apache 2.0 or the MIT license at the licensee's choice. The terms
+and conditions of the chosen license apply to this file.
+*/
+
+===== src/platform/windows.rs =====
+/*
+SPDX-License-Identifier: Apache-2.0 OR MIT
+
+Copyright 2022 The Arboard contributors
+
+The project to which this file belongs is licensed under either of
+the Apache 2.0 or the MIT license at the licensee's choice. The terms
+and conditions of the chosen license apply to this file.
+*/

@@ -1,0 +1,8 @@
+# Third-party legal/source snapshots are retained byte-for-byte. Do not apply
+# line-ending conversion or owned-source whitespace checks to original texts.
+notices/** -text -whitespace
+
+# Binary resources and exact locked covered-source archives.
+*.crate binary
+*.ico binary
+*.png binary

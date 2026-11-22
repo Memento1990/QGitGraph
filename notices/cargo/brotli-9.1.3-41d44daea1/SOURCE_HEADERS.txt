@@ -1,0 +1,10 @@
+Generated attribution/comment excerpts for cargo:brotli@9.1.3
+Source: locked, locally installed package. Comment text below is copied without editing.
+These excerpts are NOT a substitute for missing full license terms.
+
+===== src/enc/entropy_encode.rs =====
+/* Copyright 2010 Google Inc. All Rights Reserved.
+
+   Distributed under MIT license.
+   See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
+*/

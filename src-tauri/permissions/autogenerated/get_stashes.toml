@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-stashes"
+description = "Enables the get_stashes command without any pre-configured scope."
+commands.allow = ["get_stashes"]
+
+[[permission]]
+identifier = "deny-get-stashes"
+description = "Denies the get_stashes command without any pre-configured scope."
+commands.deny = ["get_stashes"]

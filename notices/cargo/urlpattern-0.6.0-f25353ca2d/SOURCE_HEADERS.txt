@@ -1,0 +1,26 @@
+Generated attribution/comment excerpts for cargo:urlpattern@0.6.0
+Source: locked, locally installed package. Comment text below is copied without editing.
+These excerpts are NOT a substitute for missing full license terms.
+
+===== src/canonicalize_and_process.rs =====
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+===== src/component.rs =====
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+===== src/constructor_parser.rs =====
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+===== src/lib.rs =====
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+//! rust-urlpattern is an implementation of the
+//! [URLPattern standard](https://wicg.github.io/urlpattern) for the Rust
+//! programming language.
+//!
+//! For a usage example, see the [UrlPattern] documentation.
+
+===== src/parser.rs =====
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+
+===== src/tokenizer.rs =====
+// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.

@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { PROJECT } from './lib/run.mjs';
+
+const metadataFile = process.argv[2];
+assert(metadataFile, 'Pass the independently retrieved official release metadata.');
+const release = JSON.parse(await readFile(metadataFile, 'utf8'));
+assert(/^v\d+\.\d+\.\d+$/.test(release.tag_name) && !release.draft && !release.prerelease);
+const version = release.tag_name.slice(1);
+const output = join(PROJECT, 'artifacts', 'tools', `gh-${version}-${Date.now()}`);
+const downloads = join(output, 'downloads'), extracted = join(output, 'extracted');
+await mkdir(downloads, { recursive: true });
+await mkdir(extracted);
+const selected = [`gh_${version}_checksums.txt`, `gh_${version}_windows_amd64.zip`];
+const inventory = [];
+for (const name of selected) {
+  const asset = release.assets.find(item => item.name === name);
+  const expected = `https://github.com/cli/cli/releases/download/${release.tag_name}/${name}`;
+  assert(asset?.browser_download_url === expected && /^sha256:[a-f0-9]{64}$/.test(asset.digest));
+  const destination = join(downloads, name);
+  const downloadUrl = process.argv[3] === '--api-assets' ? asset.url : expected;
+  assert(downloadUrl === expected || new RegExp(`^https://api\\.github\\.com/repos/cli/cli/releases/assets/[0-9]+$`).test(downloadUrl));
+  const headers = process.argv[3] === '--api-assets' ? ['-H', 'Accept: application/octet-stream', '-H', 'X-GitHub-Api-Version: 2022-11-28'] : [];
+  const child = spawn('curl', ['--fail', '--silent', '--show-error', '--location', '--proto', '=https', '--proto-redir', '=https', '--tlsv1.2', '--connect-timeout', '15', '--max-time', '180', ...headers, '--output', destination, downloadUrl], { cwd: PROJECT, windowsHide: true, shell: false, stdio: ['ignore', 'inherit', 'inherit'] });
+  const code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', resolve); });
+  assert.equal(code, 0, `Official CLI download failed: ${name}`);
+  const bytes = await readFile(destination);
+  const hash = createHash('sha256').update(bytes).digest('hex');
+  assert.equal(bytes.length, asset.size);
+  assert.equal(`sha256:${hash}`, asset.digest);
+  inventory.push({ name, bytes: bytes.length, sha256: hash, url: expected });
+}
+const checksums = await readFile(join(downloads, selected[0]), 'utf8');
+const record = checksums.split(/\r?\n/).find(line => line.endsWith(selected[1]));
+assert(record?.startsWith(inventory[1].sha256), 'Checksum document and release API digest disagree.');
+await writeFile(join(output, 'download-verification.json'), JSON.stringify({ schemaVersion: 1, repository: 'cli/cli', version, inventory, extractedDirectory: extracted, executableNotRun: true }, null, 2), { flag: 'wx' });
+console.log(JSON.stringify({ output, downloads, extracted, archive: join(downloads, selected[1]), status: 'official-bytes-verified-not-executed' }, null, 2));

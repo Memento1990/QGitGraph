@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-refs"
+description = "Enables the get_refs command without any pre-configured scope."
+commands.allow = ["get_refs"]
+
+[[permission]]
+identifier = "deny-get-refs"
+description = "Denies the get_refs command without any pre-configured scope."
+commands.deny = ["get_refs"]
