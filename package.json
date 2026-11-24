@@ -1,26 +1,38 @@
 {
   "name": "qgitgraph",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "license": "MIT",
   "private": true,
   "description": "A small, independent desktop Git history client.",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 14730 --strictPort",
-    "check": "tsc --noEmit",
-    "build": "tsc --noEmit && vite build",
+    "check": "vue-tsc --noEmit",
+    "build": "vue-tsc --noEmit && vite build",
     "test": "vitest run",
     "tauri": "tauri",
     "desktop": "tauri dev",
     "package": "tauri build --bundles nsis -- --bin qgitgraph"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.0.0"
+    "@tauri-apps/api": "^2.0.0",
+    "@vueuse/core": "14.1.0",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-vue-next": "1.0.0",
+    "reka-ui": "2.11.0",
+    "tailwind-merge": "3.7.1",
+    "vue": "3.5.46"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "4.3.5",
     "@tauri-apps/cli": "^2.0.0",
+    "@types/node": "22.10.2",
+    "@vitejs/plugin-vue": "5.2.4",
+    "tailwindcss": "4.3.5",
     "typescript": "~5.8.3",
     "vite": "^6.3.5",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "vue-tsc": "3.3.14"
   }
 }

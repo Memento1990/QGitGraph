@@ -57,7 +57,7 @@ export async function createPerformanceRun(output, repository, kind, samples, ba
   // source defaults used in both arms; no real user preferences are read/copied.
   await json(join(run.profileDirectory, 'state.json'), {
     version: 2, recent: [], lastRepo: null, trusted: [],
-    settings: { theme: 'dark', detailPosition: 'inline', diffView: 'unified', pageSize: 300, initialLoad: 300, loadMore: 100, order: 'date', avatars: false, markdown: false, emoji: true },
+    settings: { theme: 'dark', language: 'en', detailPosition: 'inline', diffView: 'unified', pageSize: 300, initialLoad: 300, loadMore: 100, order: 'date', avatars: false, markdown: false, emoji: true },
     repoSettings: {}, reviews: [], layout: { detailSize: 360, fileSize: 260 }, views: {},
   });
   run.manifest.preferences = { detailPosition: 'inline', initialLoad: 300, loadMore: 100, diffView: 'unified', avatars: false, markdown: false, emoji: true, trusted: false };
@@ -304,34 +304,78 @@ export async function startPerformanceDesktop(run, options, owned, signal) {
   await owned.snapshot(); run.manifest.profileVerified = true; await run.save(); return wd;
 }
 
-// Installed0.2 has no native instrumentation. This observer only reads DOM,
-// listens to trusted browser input and waits for real conditions + double-rAF.
-// It never calls a host API, dispatches an event, changes DOM or fakes readiness.
+// Shared observation-only selectors for legacy details and v3 HistoryDocuments.
+// A v3 tab never falls back to the graph's hidden/previous embedded diff.
+export const READONLY_UI_HELPERS = `
+const visible=e=>!!e&&!e.hidden&&!e.closest?.('[hidden]')&&e.getClientRects().length>0&&(typeof getComputedStyle!=='function'||!['hidden','collapse'].includes(getComputedStyle(e).visibility));
+const inViewport=(e,viewport)=>{
+  if(!visible(e)||!visible(viewport)||viewport.clientWidth<=0||viewport.clientHeight<=0)return false;
+  const r=e.getBoundingClientRect(),v=viewport.getBoundingClientRect();
+  return r.width>0&&r.height>0&&Math.min(r.right,v.right)>Math.max(r.left,v.left)&&Math.min(r.bottom,v.bottom)>Math.max(r.top,v.top);
+};
+const historyUi=(spec={})=>{
+  const modern=!!document.querySelector('.history-document-tabs');
+  const detail=document.querySelector('.details-pane:not([hidden])');
+  const detailOid=[...detail?.querySelectorAll('.history-detail-facts dd .mono')??[]].map(e=>e.textContent?.trim()).find(value=>/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value??''))??detail?.querySelector('.detail-summary > .mono')?.textContent?.trim();
+  const fileList=detail?.querySelector('.file-list'),files=[...detail?.querySelectorAll('.file-row')??[]];
+  const file=detail?.querySelector('.file-row.selected')?.dataset.path;
+  const surface=modern?document.querySelector('.history-document-surface:not([hidden])'):detail;
+  const tabs=[...document.querySelectorAll('.history-document-tabs [role="tab"][aria-selected="true"]')];
+  const tab=tabs.length===1?tabs[0]:null;
+  let identity=null,path=null;
+  try {
+    const value=JSON.parse(tab?.dataset.documentId??'null');
+    if(Array.isArray(value)&&value.length===2&&typeof value[0]==='string'&&typeof value[1]==='string'){
+      const comparison=JSON.parse(value[0]);
+      if(Array.isArray(comparison)&&comparison.length===4&&comparison[1]==='commit'){identity=comparison;path=value[1];}
+    }
+  }catch{}
+  const tabLinked=!!identity&&visible(tab)&&visible(surface)&&tab.getAttribute('aria-controls')===surface.id&&surface.getAttribute('aria-labelledby')===tab.id;
+  const documentMatches=modern?tabLinked&&(!spec.oid||identity[2]===spec.oid)&&(!spec.path||path===spec.path)&&(spec.parent===undefined||identity[3]===spec.parent):visible(detail)&&(!spec.oid||detailOid===spec.oid)&&(!spec.path||file===spec.path);
+  const diff=modern?surface?.querySelector('.history-document-body .diff-view'):detail?.querySelector('.diff-container > .diff-view');
+  const toolbar=modern?surface?.querySelector('.history-document-tools .diff-toolbar'):diff?.querySelector('.diff-toolbar');
+  const viewport=diff?.querySelector('.diff-scroll'),mode=toolbar?.querySelector('select[aria-label="Content view"]')?.value;
+  const rows=[...viewport?.querySelectorAll('.diff-line')??[]].filter(e=>inViewport(e,viewport));
+  const contentRows=rows.filter(e=>!!e.querySelector('.line-text')&&[...e.querySelectorAll('.line-number')].some(n=>/^[1-9][0-9]*$/.test(n.textContent?.trim()??'')));
+  const changedRows=contentRows.filter(e=>e.matches('.addition,.deletion')||!!e.querySelector('.diff-side.addition,.diff-side.deletion'));
+  const counter=toolbar?.querySelector('.diff-change-counter');
+  const counterMatch=/^Change\\s+([\\d,]+)\\s+of\\s+([\\d,]+)$/.exec(counter?.textContent?.trim()??'');
+  const activeChange=counterMatch?Number(counterMatch[1].replaceAll(',','')):null,changeCount=counterMatch?Number(counterMatch[2].replaceAll(',','')):null;
+  const changesReady=!modern||(visible(counter)&&Number.isSafeInteger(changeCount)&&Number.isSafeInteger(activeChange)&&changeCount>0&&activeChange>0&&activeChange<=changeCount);
+  const ready=documentMatches&&visible(diff)&&visible(toolbar)&&visible(viewport)&&viewport.clientWidth>0&&viewport.clientHeight>0&&viewport.getAttribute('aria-busy')!=='true'&&!surface?.querySelector('.loading-state,.inline-error');
+  const filesReady=visible(detail)&&(!spec.oid||detailOid===spec.oid)&&files.some(e=>inViewport(e,fileList))&&!detail.querySelector('.loading-state,.inline-error');
+  return {modern,detail,detailOid,fileList,files,file,surface,tab,path,diff,toolbar,viewport,mode,rows,contentRows,changedRows,changeCount,activeChange,documentMatches,ready,filesReady,patchReady:ready&&mode==='diff'&&changesReady&&changedRows.length>0,contentReady:ready&&['old','new'].includes(mode)&&contentRows.length>0};
+};`;
+
+// Installed builds without native instrumentation use the same strict DOM
+// observer. It only reads DOM, listens to trusted input and waits double-rAF;
+// no host API, dispatched event, DOM change or fabricated readiness is used.
 export const INSTALL_OBSERVER = `
 if (!window.__QGG_READONLY_PERF_OBSERVER__) {
   let current=null;
-  const visible=e=>!!e&&!!e.getClientRects().length;
+  ${READONLY_UI_HELPERS}
   const matches=(spec)=>{
     const shell=document.querySelector('.app-shell');
-    const noErrors=!document.querySelector('.errorbar:not([hidden]), .inline-error, dialog[open] .form-error:not([hidden])');
+    const noErrors=!document.querySelector('.errorbar:not([hidden]), .inline-error, dialog[open] .form-error:not([hidden]),.statusbar-task[data-tone="error"]');
     if(!noErrors)return false;
-    const detail=document.querySelector('.details-pane:not([hidden])');
-    const oid=detail?.querySelector('.detail-summary > .mono')?.textContent?.trim();
-    const file=detail?.querySelector('.file-row.selected')?.dataset.path;
-    const diff=detail?.querySelector('.diff-container > .diff-view');
+    const ui=historyUi(spec),graph=document.querySelector('.graph-surface');
+    const graphReady=!ui.modern||visible(graph);
     switch(spec.type){
-      case 'repository-history':return !!shell?.dataset.repoPath&&document.querySelector('.history-pane')?.getAttribute('aria-busy')==='false'&&!!document.querySelector('.commit-row:not(.working-row)')&&!document.querySelector('.history-overlay:not([hidden]) .loading-state');
-      case 'repository':return shell?.dataset.repoPath&&shell.dataset.taskState==='idle'&&Number(shell.dataset.taskSequence)>spec.sequence&&!!document.querySelector('.commit-row:not(.working-row)');
+      case 'repository-history':return graphReady&&!!shell?.dataset.repoPath&&document.querySelector('.history-pane')?.getAttribute('aria-busy')==='false'&&[...document.querySelectorAll('.commit-row:not(.working-row)')].some(visible)&&!document.querySelector('.history-overlay:not([hidden]) .loading-state');
+      case 'repository':{
+        const status=document.querySelector('.statusbar');
+        return graphReady&&!!shell?.dataset.repoPath&&shell.dataset.taskState==='idle'&&Number(shell.dataset.taskSequence)>spec.sequence&&[...document.querySelectorAll('.commit-row:not(.working-row)')].some(visible)&&(!ui.modern||(status?.dataset.historyState==='ready'&&['clean','changed','conflict','bare'].includes(status?.dataset.workingState)&&status?.dataset.stale!=='true'&&status?.dataset.historyStale!=='true'));
+      }
       case 'closed':return shell?.dataset.repoPath==='';
-      case 'files':return oid===spec.oid&&!!detail?.querySelector('.file-row')&&!detail?.querySelector('.commit-metadata .loading-state');
-      case 'diff':return oid===spec.oid&&(!spec.path||file===spec.path)&&visible(diff)&&!detail?.querySelector('.diff-container .loading-state')&&!!diff?.querySelector(spec.text?'.diff-line':'.diff-line,.empty-state');
-      case 'content':return document.querySelector('select[aria-label="Content view"]')?.value===spec.value&&visible(diff)&&!!diff?.querySelector('.diff-line,.empty-state');
-      case 'layout':return document.querySelector('.diff-scroll')?.classList.contains('is-split')===(spec.value==='split')&&document.querySelector('button[aria-label="'+(spec.value==='split'?'Side-by-side diff':'Unified diff')+'"]')?.getAttribute('aria-pressed')==='true';
-      case 'history':return shell?.dataset.taskState==='idle'&&Number(shell.dataset.taskSequence)>spec.sequence&&(!spec.oid||!!document.querySelector('[id="commit-'+spec.oid+'"]'));
-      case 'paging':return shell?.dataset.taskState==='idle'&&Number(shell.dataset.taskSequence)>spec.sequence&&Number(document.querySelector('.history-pane')?.getAttribute('aria-rowcount'))>spec.rowCount;
-      case 'filter':return !!document.querySelector('[id="commit-'+spec.oid+'"]')&&[...document.querySelectorAll('.commit-row:not(.working-row)')].every(e=>e.dataset.oid===spec.oid);
+      case 'files':return graphReady&&ui.filesReady;
+      case 'diff':return ui.documentMatches&&ui.patchReady;
+      case 'content':return ui.documentMatches&&ui.mode===spec.value&&(spec.value==='diff'?ui.patchReady:ui.contentReady);
+      case 'layout':return ui.patchReady&&ui.viewport.classList.contains('is-split')===(spec.value==='split')&&ui.toolbar.querySelector('button[aria-label="'+(spec.value==='split'?'Side-by-side diff':'Unified diff')+'"]')?.getAttribute('aria-pressed')==='true';
+      case 'history':return graphReady&&shell?.dataset.taskState==='idle'&&Number(shell.dataset.taskSequence)>spec.sequence&&(!spec.oid||visible(document.getElementById('commit-'+spec.oid)));
+      case 'paging':return graphReady&&shell?.dataset.taskState==='idle'&&Number(shell.dataset.taskSequence)>spec.sequence&&Number(document.querySelector('.history-pane')?.getAttribute('aria-rowcount'))>spec.rowCount;
+      case 'filter':return graphReady&&visible(document.getElementById('commit-'+spec.oid))&&[...document.querySelectorAll('.commit-row:not(.working-row)')].every(e=>e.dataset.oid===spec.oid);
       case 'menu':return visible(document.querySelector('[role="menu"]'));
-      case 'scroll':return Math.abs((document.querySelector(spec.selector)?.scrollTop??spec.before)-spec.before)>1;
+      case 'scroll':return ui.contentReady&&visible(document.querySelector(spec.selector))&&Math.abs((document.querySelector(spec.selector)?.scrollTop??spec.before)-spec.before)>1;
       case 'resize':return Math.abs(window.innerWidth-spec.before)>1;
       default:return false;
     }

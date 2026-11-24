@@ -1,0 +1,69 @@
+Generated attribution/comment excerpts for npm:tailwind-merge@3.7.1
+Source: locked, locally installed package. Comment text below is copied without editing.
+These excerpts are NOT a substitute for missing full license terms.
+
+===== dist/bundle-cjs.js =====
+/**
+ * The code in this file is copied from https://github.com/lukeed/clsx and modified to suit the needs of tailwind-merge better.
+ *
+ * Specifically:
+ * - Runtime code from https://github.com/lukeed/clsx/blob/v1.2.1/src/index.js
+ * - TypeScript types from https://github.com/lukeed/clsx/blob/v1.2.1/clsx.d.ts
+ *
+ * Original code has MIT license: Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
+ */
+
+===== dist/bundle-mjs.mjs =====
+/**
+ * The code in this file is copied from https://github.com/lukeed/clsx and modified to suit the needs of tailwind-merge better.
+ *
+ * Specifically:
+ * - Runtime code from https://github.com/lukeed/clsx/blob/v1.2.1/src/index.js
+ * - TypeScript types from https://github.com/lukeed/clsx/blob/v1.2.1/clsx.d.ts
+ *
+ * Original code has MIT license: Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
+ */
+
+===== dist/es5/bundle-cjs.js =====
+/**
+ * The code in this file is copied from https://github.com/lukeed/clsx and modified to suit the needs of tailwind-merge better.
+ *
+ * Specifically:
+ * - Runtime code from https://github.com/lukeed/clsx/blob/v1.2.1/src/index.js
+ * - TypeScript types from https://github.com/lukeed/clsx/blob/v1.2.1/clsx.d.ts
+ *
+ * Original code has MIT license: Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
+ */
+
+===== dist/es5/bundle-mjs.mjs =====
+/**
+ * The code in this file is copied from https://github.com/lukeed/clsx and modified to suit the needs of tailwind-merge better.
+ *
+ * Specifically:
+ * - Runtime code from https://github.com/lukeed/clsx/blob/v1.2.1/src/index.js
+ * - TypeScript types from https://github.com/lukeed/clsx/blob/v1.2.1/clsx.d.ts
+ *
+ * Original code has MIT license: Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
+ */
+
+===== dist/types.d.ts =====
+/**
+ * The code in this file is copied from https://github.com/lukeed/clsx and modified to suit the needs of tailwind-merge better.
+ *
+ * Specifically:
+ * - Runtime code from https://github.com/lukeed/clsx/blob/v1.2.1/src/index.js
+ * - TypeScript types from https://github.com/lukeed/clsx/blob/v1.2.1/clsx.d.ts
+ *
+ * Original code has MIT license: Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
+ */
+
+===== src/lib/tw-join.ts =====
+/**
+ * The code in this file is copied from https://github.com/lukeed/clsx and modified to suit the needs of tailwind-merge better.
+ *
+ * Specifically:
+ * - Runtime code from https://github.com/lukeed/clsx/blob/v1.2.1/src/index.js
+ * - TypeScript types from https://github.com/lukeed/clsx/blob/v1.2.1/clsx.d.ts
+ *
+ * Original code has MIT license: Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
+ */

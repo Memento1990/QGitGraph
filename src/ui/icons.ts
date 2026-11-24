@@ -20,6 +20,7 @@ const paths = {
   external: '<path d="M14 3h7v7M21 3 10 14M10 3H3v18h18v-7"/>',
   file: '<path d="M5 2h9l5 5v15H5zM14 2v6h5"/>',
   tree: '<path d="M4 3v15h5M4 8h5M13 5h8v6h-8zM13 15h8v6h-8z"/>',
+  sidebar: '<rect x="3" y="3" width="18" height="18" rx="1"/><path d="M9 3v18M5.5 7h1M5.5 11h1M5.5 15h1"/>',
   list: '<path d="M8 5h13M8 12h13M8 19h13M3 5h1M3 12h1M3 19h1"/>',
   split: '<rect x="3" y="3" width="18" height="18"/><path d="M12 3v18"/>',
   unified: '<path d="M4 4h16v16H4zM7 8h10M7 12h10M7 16h10"/>',

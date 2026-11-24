@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-probe-repository"
+description = "Enables the probe_repository command without any pre-configured scope."
+commands.allow = ["probe_repository"]
+
+[[permission]]
+identifier = "deny-probe-repository"
+description = "Denies the probe_repository command without any pre-configured scope."
+commands.deny = ["probe_repository"]

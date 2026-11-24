@@ -227,6 +227,129 @@ async fn native_no_input_is_eof_and_nul_is_rejected_before_spawn() {
         .is_empty());
 }
 
+/// Run the real GitService in an independently spawned harness: pseudoentries
+/// must be present in vars_os(), not just attempted via Command::env. Never
+/// mutate the parallel test runner's process-wide environment.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_git_accepts_inherited_pseudoentries_in_an_independent_harness() {
+    use std::{env, ffi::OsStr, os::windows::ffi::OsStrExt, process::Command};
+
+    const CHILD: &str = "QGITGRAPH_NATIVE_PSEUDOENV_CHILD";
+    const TEST: &str = "native_git_accepts_inherited_pseudoentries_in_an_independent_harness";
+    const DRIVE: (&str, &str) = ("=Q:", r"Q:\synthetic directory 中文");
+    const OTHER: [(&str, &str); 3] = [
+        ("=QGITGRAPH_NATIVE_PSEUDO", "synthetic=value"),
+        ("=QGITGRAPH_NATIVE_É😀", "中文=synthetic"),
+        ("=::", "synthetic shell metadata"),
+    ];
+
+    let child = env::var_os(CHILD);
+    if matches!(child.as_deref(), Some(value) if value == "drive-only" || value == "other-pseudo") {
+        let inherited: Vec<_> = env::vars_os().collect();
+        let expected = std::iter::once(DRIVE).chain(
+            OTHER
+                .into_iter()
+                .filter(|_| child.as_deref() == Some(OsStr::new("other-pseudo"))),
+        );
+        for (key, value) in expected {
+            assert!(
+                inherited.iter().any(|(actual_key, actual_value)| {
+                    actual_key == key && actual_value == value
+                }),
+                "synthetic pseudoentry must actually be inherited by the child harness"
+            );
+        }
+
+        let fixture = Fixture::new();
+        let version = fixture
+            .service
+            .run_output(
+                &fixture.repo,
+                "native-pseudoenv-version",
+                vec!["--version".into()],
+                None,
+                false,
+            )
+            .await
+            .unwrap();
+        assert_eq!(version.code, 0);
+        assert!(version.stdout.starts_with(b"git version "));
+        fixture
+            .service
+            .run(
+                &fixture.repo,
+                "native-pseudoenv-init",
+                ["init", "--quiet", "--initial-branch=main", "--template="]
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect(),
+                false,
+            )
+            .await
+            .unwrap();
+        let discovery = fixture
+            .service
+            .run(
+                &fixture.repo,
+                "native-pseudoenv-discovery",
+                [
+                    "rev-parse",
+                    "--path-format=absolute",
+                    "--absolute-git-dir",
+                    "--git-common-dir",
+                    "--is-bare-repository",
+                ]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+                false,
+            )
+            .await
+            .unwrap();
+        let records: Vec<_> = discovery.lines().collect();
+        assert_eq!(records.len(), 3);
+        for record in &records[..2] {
+            assert_eq!(
+                fs::canonicalize(record).unwrap(),
+                fs::canonicalize(PathBuf::from(&fixture.repo.path).join(".git")).unwrap()
+            );
+        }
+        assert_eq!(records[2], "false");
+        for request in [
+            "native-pseudoenv-version",
+            "native-pseudoenv-init",
+            "native-pseudoenv-discovery",
+        ] {
+            assert!(fixture.service.active_processes(request).is_empty());
+        }
+        return;
+    }
+
+    for shape in ["drive-only", "other-pseudo"] {
+        let mut command = Command::new(env::current_exe().unwrap());
+        command
+            .args(["--exact", TEST, "--nocapture"])
+            // Remove ambient pseudoentries only in this child so the drive-only
+            // control is independent of the test runner's inherited shell data.
+            .env_clear()
+            .envs(env::vars_os().filter(|(key, _)| key.encode_wide().next() != Some(b'=' as u16)))
+            .env(CHILD, shape)
+            .env(DRIVE.0, DRIVE.1);
+        if shape == "other-pseudo" {
+            command.envs(OTHER);
+        }
+        let output = command
+            .output()
+            .expect("start independent pseudoenvironment test harness");
+        assert!(
+            output.status.success(),
+            "{shape} child harness failed:\n{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
 /// Deliberately no timing assertion: antivirus, host load and cold image mapping
 /// dominate individual Windows samples. Call run_output, never the version cache.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

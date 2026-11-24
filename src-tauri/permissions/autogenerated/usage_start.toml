@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-usage-start"
+description = "Enables the usage_start command without any pre-configured scope."
+commands.allow = ["usage_start"]
+
+[[permission]]
+identifier = "deny-usage-start"
+description = "Denies the usage_start command without any pre-configured scope."
+commands.deny = ["usage_start"]

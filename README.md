@@ -1,57 +1,45 @@
-# QGitGraph 0.2.2
+# QGitGraph
 
-以提交图为中心的克制 Windows Git 桌面客户端，独立实现 Git Graph 的公开主要任务流程。不是上游扩展的重新打包，不包含其源码、CSS、素材或协议，也不暗示上游授权或背书。
+以提交图为中心的 Windows Git 桌面客户端，独立实现 Git Graph 的公开主要任务流程。不是上游扩展的重新打包，不包含其源码、CSS、素材或协议，也不暗示上游授权或背书。
 
-- [下载最新正式版](https://github.com/Memento1990/QGitGraph/releases/latest)
+- [下载最新公开稳定版](https://github.com/Memento1990/QGitGraph/releases/latest)（本次说明中最新已确认版本为 **v0.2.2**）
 - [源码仓库](https://github.com/Memento1990/QGitGraph)
-- 自有源码采用 [MIT License](LICENSE)，第三方组件保留各自许可。
+- 自有源码采用 [MIT License](LICENSE)，第三方组件保留各自许可，详见 [第三方说明](THIRD_PARTY_NOTICES.md)。
 
-## 0.2.2 首次公开发行与检查更新
+## 当前开发状态：0.3.0 Vue 迁移候选，未发布
 
-在 **Settings → About & privacy → Check for updates** 手动检查本仓库最新正式Release。启动和打开设置不会自动联网；检查不需要仓库信任，不读取项目数据，不携带GitHub令牌。发现新版后可主动打开官方发布页，**不会自动下载、安装或覆盖应用**。
+当前正式应用入口已迁移到 **Vue 3 + Reka UI + 本地可编辑的 shadcn-vue 组件 + Tauri 2 / Rust Host**，不是浏览器原型，也不再以旧原生 DOM 控制器作为正式界面。源码版本号为 0.3.0，**尚未发布 GitHub v0.3.0 tag / Release**；本地候选构建不等于已发布、可升级或验收完成。
 
-此版本同时完善公开源码许可、隐私脱敏和完整发布资料；性能与Git功能沿用以下已实现能力。
+- **四组同级导航**：目录、子模块、标签、储藏；后三组跟随当前仓库。仓库行保留分支切换入口和同行快捷操作，不添加分支侧树。
+- **历史与 Diff**：提交图、提交详情、父提交选择、文件列表、统一/双栏 Diff 与审阅迁移到 Vue。新 profile 默认右侧详情，已有显式布局偏好保留，不强写为新默认值。
+- **本地修改与同步**：区分已暂存、未暂存和未跟踪；暂存/取消暂存针对明确路径，提交仅使用确认的索引内容，不自动 add。同步按明确上游先 pull，失败、冲突或取消后不继续 push。
+- **设置与状态**：在设置中选择语言、主题及全局/仓库选项；未知、加载中和陈旧状态不冒充刚验证的干净状态。本轮界面验收范围是宽屏深色与浅色。
+- **原生授权与本地记录**：目录/仓库信任由 Rust 独立保存并绑定真实身份与授权 epoch；可选 usage 默认关闭，显式开始后只记录本机白名单事件，并关联运行程序及构建来源。不依赖任务看板，不开放 HTTP 或 shell bridge。
 
-## 0.2.1 性能修订
+原生 `git clean` 的预览与确认执行已完整实现，Rust **186 unit + 141 integration（12 targets）通过**。RC10 已生产构建冻结，根布局采用受控像素侧栏、主区域 flex 与独立根分隔条，不再使用根布局 Reka Splitter；菜单、Tree、Dialog 仍使用 Reka UI。前端 **747/747**、最终脚本/许可检查 **206/206**、看板 **46/46** 及 notices **945 文件**一致性检查通过。这些是实现与自动检查事实，不代表完整使用验收。
 
-- 历史与工作区状态分阶段加载；刷新保留列表、选择与滚动，取消或新的用户意图不再被恢复任务覆盖。
-- 普通Diff先显示patch，旧/新全文按需读取；减少重复Git查询，缓存与解析模型保持条数/字节上限。
-- Windows后台Git使用创建时保留的初始线程句柄，仍先挂起、绑定Job后恢复，不再枚举全系统线程。
-- 图布局、可见行、文件树与Diff模型按真实输入复用；大变更文件列表虚拟化，搜索自适应扫描，watch/focus刷新合并。
-- 可选本地性能诊断默认关闭，无遥测；真实WSL UNC测试仓库的只读前后对比与残余UNC延迟见[性能记录](docs/performance-0.2.1.md)。
+**同一 RC10 候选的真实 Windows 自动桌面 `full` 已通过 26/26，并经发行验证器复核**；这是 `automated-test`，不是 `userusage`、安装验收或完整平台认证。首轮 full01 的 driver EOF 失败记录保留；同一 RC10 exe 的本机 fixture 资源实测已通过，并经发行验证器复核，仅代表本机测量。发行门禁仍未齐备：安装静态检查的 reader 失败及同 identifier 生命周期隔离硬阻仍在，真实 `userusage` 证据不足；本轮安装/升级生命周期、干净环境与真实 WSL 性能未完成验证。旧版通过结果、浏览器样例和单元测试均不能替代当前候选验收。
 
-0.2.0功能清单继续保留如下；基线与本次结果不混用。
-
-## 0.2.0 补齐内容
-
-- 多选 refs、命名 include/exclude glob 分组、范围内 refs 搜索及独立初始/追加加载。
-- stash 语义图投影、真实 HEAD、包含关系、自定义图色、标签合并/对齐、作者/提交日期与显示选项。
-- **Inline** / Bottom / Right 详情；安全 inline Markdown、本地 Unicode gitmoji、自定义 emoji、issue/普通 HTTP 链接。
-- 附注标签完整 metadata、审阅 start/resume/end/end-all、活跃审阅自动已读及90天活动过期。
-- Ctrl/Cmd-click 比较、父子/分岔导航、HEAD居中、stash循环、可配置快捷键及键盘/ARIA改进。
-- branch 创建后checkout、tracking checkout、远端分支删除、fetch-into、对象push/pull/merge、ZIP/TAR归档。
-- tag显式类型/可选推送、stash index、cherry-pick -x/mainline、rebase日期/保merge、prune/pruneTags、squash summary、签名三态。
-- 分支创建PR（GitHub/GitLab/Bitbucket/custom）、安全分享配置导出和预览导入。
-- v1→v2保留旧偏好，叶级仓库覆盖、视图/布局恢复、显式trust后commit/tag验签与真实外部会话状态。
-
-具体实现、自动测试和实际环境证据见 [功能矩阵](docs/parity-matrix.md)、[0.2.0验证记录](docs/verification-0.2.md)；保留的安全边界和未验证平台不冒充“无差异”。
-
-## 轻量结构
-
-Tauri 2 + Rust + 原生 TypeScript/CSS，无React/组件库/大型Markdown框架，无网络字体、CDN、账号、遥测、托盘常驻、独立Web服务器或自动后台同步。只使用系统WebView2和现有Git，不捆绑Chromium、Node或Git。头像默认关闭，消息中的链接只在用户点击时打开。
-
-系统WebView2本身仍是多进程浏览器运行时；安装包小不等于总内存零开销。最终包体和全进程资源以对应版本真实报告为准。
+当前状态与旧记录的区别见 [0.3.0 候选说明](docs/release-0.3.0.md)；旧计数、哈希、安装与性能结论仅保留在其中的[迁移前历史区](docs/release-0.3.0.md#pre-vue-history)。原始日志、截图、profile、真实路径及候选资产留在本机私有目录，不加入源码或公开证据。
 
 ## 运行要求
 
-- Windows 11 x64；Windows 10 22H2尚需对应真实系统验证。
-- Git for Windows 2.38+，优先标准安装路径，再检查绝对PATH目录。设置的 `gitPath` 为全局专属可信绝对 `git.exe`，不接受shell命令。
-- Microsoft WebView2 Evergreen Runtime。缺失时安装器联网下载引导；断网且缺Runtime不能自动完成。Edge浏览器不替代Runtime。
-- 当前构建未配置Authenticode证书，安装器/应用可能出现SmartScreen提示；不承诺消除Windows信誉警告。
+- Windows 11 x64；Windows 10 22H2 仍需真实环境验证。
+- Git for Windows 2.38+；使用可信绝对 `git.exe` 路径，不接受 shell 命令作为 `gitPath`。
+- Microsoft WebView2 Evergreen Runtime；Edge 浏览器不替代 Runtime。缺少 Runtime 时安装器可能需要联网获取，不能承诺离线完成。
+- 当前候选未配置 Authenticode 签名，可能出现 SmartScreen 提示；不承诺 Windows 信誉认证。
+
+使用系统 WebView2 和现有 Git，不捆绑 Chromium、Node 或 Git。无账号、遥测、默认后台同步、产品内独立 Web 服务器或自动安装更新。WebView2 仍有多进程资源开销，包体小不代表总内存为零。
+
+## 手动检查更新
+
+在 **设置 → 关于与隐私 → 检查更新** 中主动查询本仓库最新公开稳定 Release。启动、打开设置与浏览仓库不会自动发起检查；检查不需要仓库信任，不读取仓库数据，不携带 GitHub 令牌。GitHub 会收到正常网络元数据及应用版本 User-Agent。
+
+发现新版后，仅在再次点击时打开官方发布页；**不会自动下载、安装或覆盖应用**，也不是签名验证的自更新器。公开最新版本与本地 0.3.0 候选须分开判断。
 
 ## 开发与构建
 
-需要Node22、Rust MSVC、C++ Build Tools（Desktop development with C++）及Windows SDK。`host-tests`真实验签测试还需要已安装的`ssh-keygen`；缺失会明确失败，不静默计为通过。
+需要 Node 22、Rust MSVC、C++ Build Tools（Desktop development with C++）及 Windows SDK。`host-tests` 的真实验签测试还需要 `ssh-keygen`；缺失不能算通过。
 
 ```sh
 npm ci
@@ -61,61 +49,43 @@ npm run desktop
 ```sh
 npm run check
 npm test
+npm run build
 cargo test --locked --features host-tests --manifest-path src-tauri/Cargo.toml
 cargo clippy --locked --manifest-path src-tauri/Cargo.toml --features host-tests --all-targets -- -D warnings
 npm run tauri -- build --bundles nsis --no-binary-patching -- --bin qgitgraph
 ```
 
-发行构建显式选择 `--bin qgitgraph`，不能将 `qgitgraph-test-probe.exe` 测试helper带入产品。`--no-binary-patching`保持本版本安装/解压程序同一SHA（不使用多bundle updater）；安装器输出 `src-tauri/target/release/bundle/nsis/QGitGraph_0.2.2_x64-setup.exe`。
+以上是可执行的开发/检查命令，不是本次全部通过的声明。发行构建显式选择 `--bin qgitgraph`，不分发测试 probe。使用 `QG_SOURCE_BUILD` 提供可追溯构建来源；usage 中的 `sourceBuild` 和运行时实测 `exeSha256` 是不同身份，缺失可靠来源不能冒充已冻结候选。最终资产仍需绑定实际源码、测试证据、哈希及第三方 notices，不凭版本号或旧哈希认证。
 
-本地历史产物不进入Git；公开0.2.2交付整理在 `release/QGitGraph-0.2.2/`。stage脚本需真实测试证据索引，自动检查版本、hash、签名状态及notice/source完整性，不硬编码通过数量。GitHub Release附有可直接按资产文件名验证的SHA-256清单。
+### 隔离的真实 Vue 桌面验收
 
-解压运行包必须保留完整目录与 `LICENSE`、`THIRD_PARTY_NOTICES.md`、`notices/`（含MPL源文件），不能只发exe。它与安装包使用同一SHA-256的原样程序。此处“解压运行”指无需安装即可启动，不承诺默认配置自动保存到exe旁；需要隔离配置时显式指定`--profile-dir=ABS`。
-
-### 真实隔离桌面验收
+在项目根目录执行，下列占位符需替换为实际已验证的程序/驱动路径；每次使用全新的本机忽略目录。
 
 ```sh
-node scripts/test-desktop.mjs --binary src-tauri/target/release/qgitgraph.exe --driver <已验签且匹配Runtime的msedgedriver.exe> --output artifacts/new-run --suite parity
+node scripts/test-vue-desktop.mjs --binary <候选exe绝对路径> --driver <已验证驱动绝对路径> --output artifacts/new-vue-full --suite full
+node scripts/measure-resources.mjs --binary <同一候选exe绝对路径> --driver <已验证驱动绝对路径> --output artifacts/new-vue-resources --frontend vue
 ```
 
-每run必须新目录；应用state、WebView2数据、Git HOME/config及refs隔离。测试身份核对path/HEAD与profile，失败也留证，finally只清理run拥有的进程，不回退用户APPDATA。
+桌面脚本只接受新建夹具，隔离应用 profile、WebView2 与 Git 环境；真实操作通过 native UI 发起，日志来源为 `automated-test`，不是 `userusage`。资源脚本须显式选择 `--frontend vue`，其本机夹具采样不证明真实 WSL 性能。失败、Blocked 与未覆盖项保留，不能写成完整通过。
 
-应用支持正常的显式profile选项：
+安装验收另有边界：同 identifier 的安装器共享 currentUser 注册项与快捷方式；更换安装目录或 `--profile-dir` **不能隔离安装生命周期**。现有同产品安装会阻断对应测试；静态解包/哈希检查不等于新装、升级或卸载验证，后者留待明确授权的隔离环境。
 
-```sh
-qgitgraph.exe --profile-dir=D:\QGitGraph-Profiles\personal
-```
+应用可通过 `--profile-dir=ABS` 指定独立配置目录；这不是安装注册隔离。浏览器 `npm run dev` 只用于开发预览，`?demo` 为样例数据，不算 native 证据，正式包不包含 demo。
 
-### 浏览器预览
+## 安全与分发
 
-`npm run dev` 后：
-- `http://127.0.0.1:14730` 明确显示需要桌面宿主，不读取文件系统。
-- `http://127.0.0.1:14730?demo` 仅开发模式样例，用于视觉预览；不执行Git写入，不算端到端证据，正式包不包含。
+- 仓库默认只读；写入、网络 Git、外部工具和显式验签需要原生信任。选择目录不等于信任全部候选；目录授权必须单独确认。Git 不是恶意仓库沙箱。
+- 类型化 Host 命令不开放任意 shell、argv 或文件读写。目录发现是有界纯文件系统扫描；候选摘要是独立只读 Git 请求，不自动 fetch。
+- 取消写操作不回滚；没有自动 discard、删除 lock、全局扩展 `safe.directory` 或假成功。编辑与冲突解决仍有外部工具边界。
+- 密码、私钥不写入应用 state 或 usage；usage 不记录代码、Diff 正文、提交说明、自由输入或真实私有路径。可选头像会向第三方发送哈希邮箱及网络元数据，默认关闭。
+- 本地 `artifacts/`、日志、备份和 `release/` 资产不进入仓库；私有验收证据不作为公开发布附件。
+- 分发包必须保留 `LICENSE`、`THIRD_PARTY_NOTICES.md` 和完整 `notices/`（含适用的 MPL 源码），不能只分发 exe。自有代码 MIT 不改变第三方许可，也不等于所有依赖均为 MIT 或已完成法律/签名认证。
 
-## 安全与等价能力
+## 文档
 
-- 初次仓库只读，写操作/外部工具/验证器需trust；Git不是恶意仓库沙箱。
-- force-with-lease、危险确认、无自动discard/删lock/全局safe.directory。取消写操作不回滚，查看真实Git恢复状态。
-- 内置Diff/历史只读；编辑、暂存和冲突解决通过外部工具。历史snapshot在应用目录受控导出只读文件。
-- 外部console报告started/running/paused/failed/completed，启动不等于rebase成功；暂停时可用实际shell继续/abort，Git已退出不因等Enter占锁。外部用户会话不随主窗口静默终止。
-- 签名存在不等于验证；普通浏览不自动执行仓库配置的verifier。显式验证支持commit和附注tag，三态sign默认遵循Git配置。
-- 密码/私钥不存应用state。用户已有GCM/SSH/GPG配置按可信操作环境策略使用；输出脱敏。
-- 默认不自动递归子模块网络或打开任意remote-helper；复杂root/merge自动drop有拓扑保护，转明确审阅的交互流程而非假成功。
-
-公开文档的inline Markdown与有界issue规则不是原始HTML/任意regexp；无法用代码替代的Win10/干净VM/多屏DPI/真实provider认证/签名证书列为环境门禁。手动更新请求会向GitHub发送正常网络元数据（IP、应用User-Agent/版本）；没有遥测、默认自动检查或自动安装。
-
-## 文档与许可
-
-- [0.2.2公开发行、更新与验证说明](docs/release-0.2.2.md)
-
-- [冻结公开规格](docs/parity-spec-0.2.md)
-- [逐项矩阵](docs/parity-matrix.md)
-- [0.2.1性能记录与前后对照](docs/performance-0.2.1.md)
-- [0.2.1交付说明](docs/delivery-0.2.1.md)
-- [0.2.1验收与本地升级边界](docs/performance-release-checklist-0.2.1.md)
-- [0.2.0历史验证记录](docs/verification-0.2.md)
-- [0.2.0历史交付说明](docs/delivery-0.2.md)
+- [0.3.0 Vue 候选状态与迁移前历史](docs/release-0.3.0.md)
 - [安全模型](SECURITY.md)
-- [第三方许可](THIRD_PARTY_NOTICES.md)
-
-QGitGraph自有源码采用MIT许可，详见 [LICENSE](LICENSE)。第三方组件保留各自原许可证；完整原文、锁定MPL源码与获取说明随交付，应用MIT选择不改变这些权利或替代native runtime/CRT/NSIS最终分发复核。
+- [第三方许可与分发边界](THIRD_PARTY_NOTICES.md)
+- [0.2.2 公开发行与手动更新说明](docs/release-0.2.2.md)
+- [0.2.1 历史性能记录](docs/performance-0.2.1.md)
+- [0.2.0 历史功能矩阵](docs/parity-matrix.md)与[验证记录](docs/verification-0.2.md)（不作为当前 Vue 候选覆盖声明）

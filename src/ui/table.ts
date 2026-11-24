@@ -1,21 +1,25 @@
 import type { AppSettings, Commit, GitRef, WorkingState } from '../shared/protocol';
 import type { GraphRow } from '../lib/graph';
-import { clamp, commitDate, dateValue, formatDate, shortOid } from '../lib/format';
+import { clamp, commitDate, dateText, fullDateText, numberText, shortOid } from '../lib/format';
+import { m } from '../i18n/history';
 import { performanceDiagnostics as perf, type PerformanceContext, type PerformanceSpan } from '../lib/performance';
-import { button, el, resizer } from './dom';
+import { button, disposeBindings, el, resizer, setAttribute, setText, type Localizable } from './dom';
 import { icon } from './icons';
 import { renderMessage } from './message';
-import { RowLayout } from './navigation';
+import { RowLayout, type InlineSide } from './navigation';
+
+export interface HistoryScrollAnchor { oid: string; offset: number; scrollLeft: number; detailOffset?: number; detailOid?: string }
+export type TableSelectionIntent = 'toggle' | 'ensure-open';
 
 export interface TableModel {
   commits: readonly Commit[]; graph: readonly GraphRow[]; working: WorkingState | null;
   settings: AppSettings; selected: string | null; compareBase: string | null;
   head: string | null; hasMore: boolean; loading: boolean; totalLoaded: number;
-  inline?: { oid: string; element: HTMLElement; height: number };
+  inline?: { oid: string; element: HTMLElement; height: number; side?: InlineSide };
   pauseAutoLoad?: boolean;
 }
 export interface TableCallbacks {
-  select: (oid: string, compare: boolean) => void;
+  select: (oid: string, compare: boolean, intent?: TableSelectionIntent) => void;
   context: (oid: string, x: number, y: number, element: HTMLElement) => void;
   refContext: (ref: GitRef, x: number, y: number, element: HTMLElement) => void;
   loadMore: () => void; loadMoreExplicit?: () => void;
@@ -99,24 +103,50 @@ export class CommitTable {
   private scheduledSpans: PerformanceSpan[] = [];
 
   constructor(private readonly callbacks: TableCallbacks) {
-    this.element.tabIndex = 0; this.element.setAttribute('role', 'grid'); this.element.setAttribute('aria-label', 'Commit history. Arrow keys navigate; Control or Shift click compares; Menu opens actions.');
+    this.element.tabIndex = 0; this.element.setAttribute('role', 'grid'); setAttribute(this.element, 'aria-label', m('table.history'));
     this.element.setAttribute('aria-multiselectable', 'true'); this.viewport.setAttribute('role', 'rowgroup'); this.rowLayer.setAttribute('role', 'presentation');
+    this.viewport.style.overflowAnchor = 'none';
     this.canvas.setAttribute('aria-hidden', 'true'); this.inlineSlot.hidden = true; this.inlineSlot.setAttribute('role', 'row'); this.inlineCell.setAttribute('role', 'gridcell'); this.inlineCell.setAttribute('aria-colindex', '1'); this.inlineSlot.append(this.inlineCell);
     this.content.append(this.rowLayer, this.canvas, this.inlineSlot); this.viewport.append(this.content);
-    this.loadButton = button('Load more commits', () => (callbacks.loadMoreExplicit ?? callbacks.loadMore)(), 'arrowDown'); this.loadButton.dataset.action = 'load-more';
+    this.loadButton = button(m('table.loadMore'), () => (callbacks.loadMoreExplicit ?? callbacks.loadMore)(), 'arrowDown'); this.loadButton.dataset.action = 'load-more';
     this.footer.append(el('span', 'history-count'), this.loadButton); this.footer.setAttribute('role', 'presentation');
     this.element.append(this.header, this.viewport, this.footer);
     this.viewport.addEventListener('scroll', () => {
       const expected = this.programmaticScroll;
       const user = !expected || Math.abs(expected.top - this.viewport.scrollTop) > 1 || Math.abs(expected.left - this.viewport.scrollLeft) > 1;
       this.programmaticScroll = undefined;
-      this.schedule(); this.callbacks.scrolled?.(user); this.callbacks.hover?.(null);
+      this.updateInlineSlotGeometry(); this.schedule(); this.callbacks.scrolled?.(user); this.callbacks.hover?.(null);
     });
     this.element.addEventListener('keydown', event => this.keydown(event));
-    this.observer = new ResizeObserver(() => this.schedule()); this.observer.observe(this.viewport);
+    this.observer = new ResizeObserver(() => { this.updateInlineSlotGeometry(); this.schedule(); }); this.observer.observe(this.viewport);
   }
   get scrollTop(): number { return this.viewport.scrollTop; }
   set scrollTop(value: number) { this.setScrollTop(value); this.schedule(); }
+  get scrollLeft(): number { return this.viewport.scrollLeft; }
+  set scrollLeft(value: number) {
+    this.viewport.scrollLeft = Math.max(0, value); this.programmaticScroll = { top: this.viewport.scrollTop, left: this.viewport.scrollLeft }; this.updateInlineSlotGeometry(); this.schedule();
+  }
+  captureAnchor(oid?: string): HistoryScrollAnchor | null {
+    const model = this.model; if (!model || !this.layout.count) return null;
+    const top = this.viewport.scrollTop, index = oid ? this.rowIndex(oid) : this.layout.indexAt(top); if (index < 0) return null;
+    const rowOid = model.working && index === 0 ? 'WORKTREE' : model.commits[index - Number(Boolean(model.working))]?.oid; if (!rowOid) return null;
+    const insideDetail = !oid && this.layout.slotIndex >= 0 && top >= this.layout.slotTop && top < this.layout.slotTop + this.layout.slotHeight;
+    return { oid: rowOid, offset: insideDetail ? 0 : top - this.layout.top(index), scrollLeft: this.viewport.scrollLeft, ...(insideDetail ? { detailOffset: top - this.layout.slotTop, detailOid: model.inline?.oid } : {}) };
+  }
+  restoreAnchor(anchor: HistoryScrollAnchor | null): void {
+    if (!anchor) return;
+    const index = this.rowIndex(anchor.oid); if (index < 0) return;
+    const inSameDetail = anchor.detailOffset !== undefined && index === this.layout.slotIndex && (!anchor.detailOid || anchor.detailOid === this.model?.inline?.oid);
+    this.viewport.scrollLeft = Math.max(0, anchor.scrollLeft);
+    this.setScrollTop(inSameDetail ? this.layout.slotTop + Math.min(anchor.detailOffset!, Math.max(0, this.layout.slotHeight - 1)) : this.layout.top(index) + anchor.offset);
+    this.updateInlineSlotGeometry(); this.schedule();
+  }
+  /** Decide from pure-list position, with the existing insertion removed before measuring the viewport. */
+  chooseInlineSide(oid: string): InlineSide {
+    const model = this.model, index = this.rowIndex(oid); if (!model || index < 0) return 'after';
+    const plainTop = this.layout.plainScrollTop(this.viewport.scrollTop, this.viewport.clientHeight);
+    return index * model.settings.rowHeight - plainTop + model.settings.rowHeight / 2 < this.viewport.clientHeight / 2 ? 'after' : 'before';
+  }
   private setScrollTop(value: number): void {
     this.viewport.scrollTop = Math.max(0, value);
     this.programmaticScroll = { top: this.viewport.scrollTop, left: this.viewport.scrollLeft };
@@ -125,7 +155,14 @@ export class CommitTable {
     this.performanceContext = perf.context();
     const span = perf.span('table', 'set-model', { count: model.commits.length });
     try {
-    const old = this.model; this.model = model;
+    const old = this.model;
+    const inlineChanged = old?.inline?.oid !== model.inline?.oid || old?.inline?.side !== model.inline?.side;
+    const rowToAnchor = inlineChanged ? model.inline?.oid ?? old?.inline?.oid : undefined;
+    const rowIndexToAnchor = rowToAnchor ? this.rowIndex(rowToAnchor) : -1;
+    const rowTop = rowIndexToAnchor >= 0 ? this.layout.top(rowIndexToAnchor) : -1;
+    const rowVisible = rowIndexToAnchor >= 0 && rowTop + (old?.settings.rowHeight ?? 0) > this.viewport.scrollTop && rowTop < this.viewport.scrollTop + this.viewport.clientHeight;
+    const anchor = resetScroll ? null : this.captureAnchor(rowVisible ? rowToAnchor : undefined);
+    this.model = model;
     const dataChanged = !old || old.commits !== model.commits || Boolean(old.working) !== Boolean(model.working);
     if (dataChanged) {
       this.version++; this.indices.clear();
@@ -141,11 +178,12 @@ export class CommitTable {
     if (!old || JSON.stringify(old.settings.columns) !== JSON.stringify(model.settings.columns)) this.renderHeader();
     const count = model.commits.length + (model.working ? 1 : 0);
     const inlineIndex = model.inline ? this.rowIndex(model.inline.oid) : -1;
-    const geometryChanged = !old || count !== this.layout.count || model.settings.rowHeight !== old.settings.rowHeight
-      || inlineIndex !== this.layout.slotIndex || (model.inline?.height ?? 0) !== (old.inline?.height ?? 0);
+    const geometryChanged = !old || count !== this.layout.count || model.settings.rowHeight !== this.layout.rowHeight
+      || inlineIndex !== this.layout.slotIndex || (model.inline?.height ?? 0) !== this.layout.slotHeight || (model.inline?.side ?? 'after') !== this.layout.side;
     if (geometryChanged) {
-      this.geometryRevision++; this.layout = new RowLayout(count, model.settings.rowHeight, inlineIndex, model.inline?.height ?? 0);
+      this.geometryRevision++; this.layout = new RowLayout(count, model.settings.rowHeight, inlineIndex, model.inline?.height ?? 0, model.inline?.side ?? 'after');
       this.content.style.height = `${this.layout.totalHeight}px`;
+      if (anchor) this.restoreAnchor(anchor);
     }
     if (dataChanged || old?.hasMore !== model.hasMore || old?.loading !== model.loading || old?.pauseAutoLoad !== model.pauseAutoLoad) this.loadRequested = false;
     if (old?.head !== model.head || old?.working !== model.working) this.version++;
@@ -157,14 +195,34 @@ export class CommitTable {
     if (model.inline && inlineIndex >= 0) {
       this.inlineSlot.style.top = `${this.layout.slotTop}px`; this.inlineSlot.style.height = `${model.inline.height}px`;
       if (this.inlineCell.firstElementChild !== model.inline.element) this.inlineCell.replaceChildren(model.inline.element);
-      this.inlineSlot.setAttribute('aria-rowindex', String(inlineIndex + 3)); this.inlineSlot.setAttribute('aria-label', 'Details for selected commit');
+      this.inlineSlot.setAttribute('aria-rowindex', String(this.layout.slotBoundary + 2)); this.inlineSlot.dataset.side = model.inline.side ?? 'after'; setAttribute(this.inlineSlot, 'aria-label', m('table.inlineDetails'));
     } else { this.inlineSlot.removeAttribute('aria-rowindex'); if (this.inlineCell.childElementCount) this.inlineCell.replaceChildren(); }
+    this.updateInlineSlotGeometry();
     this.updateSelection(old);
-    this.footer.firstElementChild!.textContent = `${model.commits.length.toLocaleString()} shown${model.totalLoaded !== model.commits.length ? ` / ${model.totalLoaded.toLocaleString()} loaded` : ''}${model.hasMore ? ' · more available' : ''}`;
+    this.updateFooter();
     this.loadButton.hidden = !model.hasMore; this.loadButton.disabled = model.loading;
-    this.loadButton.querySelector('span')!.textContent = model.loading ? 'Loading…' : 'Load more commits';
     this.schedule();
     } finally { span.end(); }
+  }
+  /** The insertion shares row Y geometry, but its X/width belong to the visible viewport, not the wide columns. */
+  private updateInlineSlotGeometry(): void {
+    if (this.inlineSlot.hidden) return;
+    // clientWidth already excludes borders and the vertical scrollbar; subtract the slot's own border via border-box.
+    this.inlineSlot.style.left = `${this.viewport.scrollLeft}px`;
+    this.inlineSlot.style.right = 'auto';
+    this.inlineSlot.style.width = `${this.viewport.clientWidth}px`;
+    this.inlineSlot.style.boxSizing = 'border-box';
+  }
+  /** Rebind presentation only: never schedule history rendering, graph drawing, or auto-loading. */
+  updateLocale(): void { if (this.model) this.updateFooter(); }
+  private updateFooter(): void {
+    const model = this.model!;
+    let count = m('table.shown', { count: numberText(model.commits.length) });
+    if (model.totalLoaded !== model.commits.length) count = m('table.loaded', { shown: count, count: numberText(model.totalLoaded) });
+    if (model.hasMore) count = m('table.moreAvailable', { count });
+    setText(this.footer.firstElementChild!, count);
+    const label = model.loading ? m('table.loading') : m('table.loadMore');
+    setText(this.loadButton.querySelector('span')!, label); setAttribute(this.loadButton, 'title', label);
   }
   private applyWidths(): void {
     const settings = this.model!.settings, widths = settings.columnWidths;
@@ -192,19 +250,19 @@ export class CommitTable {
   private renderHeader(): void {
     const model = this.model!; this.header.replaceChildren(); this.header.setAttribute('role', 'row'); this.header.setAttribute('aria-rowindex', '1');
     let col = 0;
-    const cell = (label: string, key?: keyof AppSettings['columnWidths']): HTMLElement => {
+    const cell = (label: Localizable, key?: keyof AppSettings['columnWidths'], resizeLabel?: Localizable): HTMLElement => {
       const node = el('div', 'header-cell', label); node.setAttribute('role', 'columnheader'); node.setAttribute('aria-colindex', String(++col));
       if (key) node.append(resizer('vertical', () => this.model!.settings.columnWidths[key], (value, final) => {
         const next = { ...this.model!.settings.columnWidths, [key]: clamp(value, 60, key === 'graph' ? 640 : 400) };
         this.model!.settings = { ...this.model!.settings, columnWidths: next }; this.applyWidths(); this.graphRevision++; this.schedule();
         if (final) this.callbacks.widths(next);
-      }, 60, () => key === 'graph' ? 640 : 400, false, `Resize ${label.toLowerCase()} column`));
+      }, 60, () => key === 'graph' ? 640 : 400, false, resizeLabel));
       return node;
     };
-    this.header.append(cell('Graph', 'graph'), cell('Description'));
-    if (model.settings.columns.date) this.header.append(cell('Date', 'date'));
-    if (model.settings.columns.author) this.header.append(cell('Author', 'author'));
-    if (model.settings.columns.commit) this.header.append(cell('Commit', 'commit'));
+    this.header.append(cell(m('table.graph'), 'graph', m('table.resizeGraph')), cell(m('table.description')));
+    if (model.settings.columns.date) this.header.append(cell(m('table.date'), 'date', m('table.resizeDate')));
+    if (model.settings.columns.author) this.header.append(cell(m('table.author'), 'author', m('table.resizeAuthor')));
+    if (model.settings.columns.commit) this.header.append(cell(m('table.commit'), 'commit', m('table.resizeCommit')));
   }
   private updateSelection(old: TableModel | null): void {
     const model = this.model!;
@@ -233,8 +291,9 @@ export class CommitTable {
     const span = perf.span('table', 'render', { count: model.commits.length });
     let renderedCount = 0;
     try {
-    const rowHeight = model.settings.rowHeight, offset = model.working ? 1 : 0, count = model.commits.length + offset, top = this.viewport.scrollTop;
-    const first = Math.max(0, this.layout.indexAt(top) - 5), last = Math.min(count, this.layout.indexAt(top + this.viewport.clientHeight) + 7);
+    this.updateInlineSlotGeometry();
+    const rowHeight = model.settings.rowHeight, offset = model.working ? 1 : 0, top = this.viewport.scrollTop;
+    const { first, last } = this.layout.visibleRange(top, this.viewport.clientHeight);
     const key = `${this.version}:${this.geometryRevision}:${first}:${last}`;
     renderedCount = last - first;
     if (key !== this.renderedKey) {
@@ -251,7 +310,7 @@ export class CommitTable {
           && cached.head === (oid === model.head) && (commit !== null || cached.workingKey === workingKey)) {
           const row = cached.element;
           row.style.top = `${this.layout.top(index)}px`;
-          row.setAttribute('aria-rowindex', String(index + 2 + Number(this.layout.slotIndex >= 0 && index > this.layout.slotIndex)));
+          row.setAttribute('aria-rowindex', String(index + 2 + Number(this.layout.slotBoundary >= 0 && index >= this.layout.slotBoundary)));
           row.classList.toggle('selected', oid === model.selected); row.classList.toggle('compare-base', oid === model.compareBase);
           row.setAttribute('aria-selected', String(oid === model.selected || oid === model.compareBase));
           if (row === cursor) cursor = cursor.nextElementSibling;
@@ -260,8 +319,8 @@ export class CommitTable {
         }
         const row = el('div', `commit-row${oid === model.selected ? ' selected' : ''}${oid === model.compareBase ? ' compare-base' : ''}${!commit ? ' working-row' : ''}${commit && model.settings.muteMerges && commit.parents.length > 1 ? ' muted-merge' : ''}${commit?.inHead === false && model.settings.muteNonAncestors ? ' non-ancestor' : ''}`);
         row.style.top = `${this.layout.top(index)}px`; row.id = `commit-${oid}`; row.dataset.oid = oid;
-        row.setAttribute('role', 'row'); row.setAttribute('aria-rowindex', String(index + 2 + Number(this.layout.slotIndex >= 0 && index > this.layout.slotIndex))); row.setAttribute('aria-selected', String(oid === model.selected || oid === model.compareBase));
-        const graphCell = el('div', 'graph-cell'); graphCell.setAttribute('role', 'gridcell'); graphCell.setAttribute('aria-label', commit ? commit.nodeKind === 'stash' ? 'Stash' : commit.parents.length > 1 ? 'Merge commit' : 'Commit' : 'Uncommitted changes');
+        row.setAttribute('role', 'row'); row.setAttribute('aria-rowindex', String(index + 2 + Number(this.layout.slotBoundary >= 0 && index >= this.layout.slotBoundary))); row.setAttribute('aria-selected', String(oid === model.selected || oid === model.compareBase));
+        const graphCell = el('div', 'graph-cell'); graphCell.setAttribute('role', 'gridcell'); setAttribute(graphCell, 'aria-label', commit ? commit.nodeKind === 'stash' ? m('table.stash') : commit.parents.length > 1 ? m('table.mergeCommit') : m('table.commit') : m('table.uncommittedChanges'));
         const description = el('div', `commit-description labels-${model.settings.labelAlignment}`); description.setAttribute('role', 'gridcell');
         if (commit) {
           const refs = el('span', 'ref-badges');
@@ -281,20 +340,20 @@ export class CommitTable {
             }
             refs.append(chipGroup);
           }
-          const message = renderMessage(commit.subject || '(no subject)', model.settings, url => this.callbacks.openUrl?.(url), true); message.classList.add('commit-subject');
+          const message = commit.subject ? renderMessage(commit.subject, model.settings, url => this.callbacks.openUrl?.(url), true) : el('span', 'linked-message message-content message-inline', m('table.noSubject')); message.classList.add('commit-subject');
           description.append(refs, message); description.title = commit.subject;
           if (commit.oid === model.head) description.append(el('span', 'badge head-badge', 'HEAD'));
           row.addEventListener('pointerenter', () => this.callbacks.hover?.(oid, row)); row.addEventListener('pointerleave', () => this.callbacks.hover?.(null));
         } else {
-          description.append(icon('editor'), el('strong', '', 'Working tree'), el('span', 'muted', `${model.working!.files.length} changed files`));
-          if (model.working!.operation) description.append(el('span', 'badge operation-badge', model.working!.operation));
-          if (model.working!.conflicts) description.append(el('span', 'badge conflict-badge', `${model.working!.conflicts} conflicts`));
+          description.append(icon('editor'), el('strong', '', m('table.workingTree')), el('span', 'muted', m('table.changedFiles', { count: numberText(model.working!.files.length) })));
+          if (model.working!.operation) description.append(el('span', 'badge operation-badge', m(`operation.${model.working!.operation}`)));
+          if (model.working!.conflicts) description.append(el('span', 'badge conflict-badge', m('table.conflicts', { count: numberText(model.working!.conflicts) })));
         }
         row.append(graphCell, description);
-        if (model.settings.columns.date) { const value = commit ? commitDate(commit, model.settings.dateSource) : 0; const date = el('div', 'commit-cell date-cell', commit ? formatDate(value, model.settings.dateFormat) : 'Uncommitted'); date.title = commit ? dateValue(value).toLocaleString() : ''; date.setAttribute('role', 'gridcell'); row.append(date); }
+        if (model.settings.columns.date) { const value = commit ? commitDate(commit, model.settings.dateSource) : 0; const date = el('div', 'commit-cell date-cell', commit ? dateText(value, model.settings.dateFormat) : m('table.uncommitted')); setAttribute(date, 'title', commit ? fullDateText(value) : ''); date.setAttribute('role', 'gridcell'); row.append(date); }
         if (model.settings.columns.author) { const author = el('div', 'commit-cell author-cell', commit && model.settings.avatars ? avatar(commit.email) : null, commit?.author ?? ''); author.title = commit ? `${commit.author} <${commit.email}>` : ''; author.setAttribute('role', 'gridcell'); row.append(author); }
         if (model.settings.columns.commit) { const hash = el('div', 'commit-cell mono hash-cell', commit ? shortOid(commit.oid) : ''); hash.title = commit?.oid ?? ''; hash.setAttribute('role', 'gridcell'); row.append(hash); }
-        row.addEventListener('click', event => { if ((event.target as Element).closest('a,button')) return; this.callbacks.select(oid, event.shiftKey || event.ctrlKey || event.metaKey); this.focus(); });
+        row.addEventListener('click', event => { if ((event.target as Element).closest('a,button')) return; this.callbacks.select(oid, event.shiftKey || event.ctrlKey || event.metaKey, 'toggle'); this.focus(); });
         row.addEventListener('contextmenu', event => { event.preventDefault(); this.callbacks.context(oid, event.clientX, event.clientY, this.element); });
         this.rows.set(oid, { element: row, commit, styleRevision: this.styleRevision, workingKey, head: oid === model.head });
         if (cached) {
@@ -333,9 +392,11 @@ export class CommitTable {
       const top = this.layout.top(index) - scrollTop;
       context.globalAlpha = model.settings.muteNonAncestors && graph.inHead === false ? 0.35 : model.settings.muteMerges && graph.merge ? 0.65 : 1;
       context.setLineDash(graph.nodeKind === 'working' ? [3, 3] : []);
+      this.canvas.style.pointerEvents = 'none';
+      const previousEdgeY = index > 0 ? this.layout.top(index - 1) + rh - scrollTop : top;
       for (const edge of graph.edges) {
         context.strokeStyle = color(edge.color); context.beginPath();
-        const fromX = x(edge.from), toX = x(edge.to), fromY = top + edge.start * rh, toY = edge.end === 1 ? this.layout.top(index + 1) - scrollTop : top + edge.end * rh;
+        const fromX = x(edge.from), toX = x(edge.to), fromY = edge.start === 0 ? previousEdgeY : top + edge.start * rh, toY = top + edge.end * rh;
         context.moveTo(fromX, fromY);
         if (fromX === toX) context.lineTo(toX, toY);
         else if (model.settings.graphStyle === 'angular') { context.lineTo(fromX, fromY + (toY - fromY) * 0.25); context.lineTo(toX, toY - (toY - fromY) * 0.25); context.lineTo(toX, toY); }
@@ -353,7 +414,9 @@ export class CommitTable {
     } finally { span.end(); }
   }
   private keydown(event: KeyboardEvent): void {
-    const model = this.model; if (!model || (event.target as HTMLElement).closest('button,input,select,textarea,a,.inline-detail-slot')) return;
+    const model = this.model; if (!model || (event.target as HTMLElement).closest('button,input,select,textarea,a,[contenteditable="true"],[contenteditable=""],[role="textbox"],[role="tree"],[role="listbox"],[role="separator"],.file-list,.diff-view')) return;
+    const withinDetails = Boolean((event.target as HTMLElement).closest('.inline-detail-slot'));
+    if (withinDetails && !['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) return;
     const count = model.commits.length + Number(Boolean(model.working)); if (!count) return;
     let index = model.selected ? this.rowIndex(model.selected) : -1, target = index < 0 ? 0 : index;
     const oidAt = (at: number): string => model.working && at === 0 ? 'WORKTREE' : model.commits[at - Number(Boolean(model.working))].oid;
@@ -368,7 +431,7 @@ export class CommitTable {
       case 'Home': target = 0; break;
       case 'End': target = count - 1; break;
       case 'ArrowRight': case 'F2': { event.preventDefault(); if (model.selected) document.getElementById(`commit-${model.selected}`)?.querySelector<HTMLElement>('[data-ref]')?.focus(); return; }
-      case 'Enter': case ' ': this.callbacks.select(oidAt(target), event.key === ' ' || event.shiftKey || mod); event.preventDefault(); return;
+      case 'Enter': case ' ': this.callbacks.select(oidAt(target), event.key === ' ' || event.shiftKey || mod, 'ensure-open'); event.preventDefault(); event.stopPropagation(); return;
       case 'c': if (mod && model.selected && model.selected !== 'WORKTREE') { event.preventDefault(); this.callbacks.copy(model.selected); } return;
       case 'ContextMenu': case 'F10': {
         if (event.key === 'F10' && !event.shiftKey) return;
@@ -376,7 +439,7 @@ export class CommitTable {
       }
       default: return;
     }
-    event.preventDefault(); index = target; this.callbacks.select(oidAt(index), event.shiftKey); this.reveal(oidAt(index));
+    event.preventDefault(); event.stopPropagation(); index = target; this.callbacks.select(oidAt(index), event.shiftKey, 'ensure-open'); this.reveal(oidAt(index));
   }
-  destroy(): void { this.observer.disconnect(); cancelAnimationFrame(this.frame); this.rows.clear(); this.indices.clear(); for (const span of this.scheduledSpans) span.end({ outcome: 'cancelled' }); this.scheduledSpans = []; }
+  destroy(): void { this.observer.disconnect(); cancelAnimationFrame(this.frame); disposeBindings(this.element); this.rows.clear(); this.indices.clear(); for (const span of this.scheduledSpans) span.end({ outcome: 'cancelled' }); this.scheduledSpans = []; }
 }

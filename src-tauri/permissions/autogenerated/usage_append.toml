@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-usage-append"
+description = "Enables the usage_append command without any pre-configured scope."
+commands.allow = ["usage_append"]
+
+[[permission]]
+identifier = "deny-usage-append"
+description = "Denies the usage_append command without any pre-configured scope."
+commands.deny = ["usage_append"]

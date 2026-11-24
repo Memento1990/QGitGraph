@@ -1,6 +1,7 @@
 use crate::{
     error::{AppError, Result},
     model::*,
+    settings::{dialog_title, DialogTitle},
     state::{self, AppState},
     system,
 };
@@ -35,7 +36,9 @@ pub async fn diagnostics(state: State<'_, AppState>) -> Result<Diagnostics> {
 }
 
 #[tauri::command]
-pub async fn check_for_updates(state: State<'_, AppState>) -> Result<crate::updates::GithubUpdateInfo> {
+pub async fn check_for_updates(
+    state: State<'_, AppState>,
+) -> Result<crate::updates::GithubUpdateInfo> {
     state.updates.check().await
 }
 
@@ -60,9 +63,16 @@ pub async fn save_state(state: State<'_, AppState>, value: PersistedState) -> Re
 }
 
 #[tauri::command]
-pub async fn pick_repository(state: State<'_, AppState>) -> Result<Option<String>> {
+pub async fn pick_repository(
+    state: State<'_, AppState>,
+    purpose: Option<RepositoryPickerPurpose>,
+) -> Result<Option<String>> {
+    let title = match purpose.unwrap_or_default() {
+        RepositoryPickerPurpose::Repository => DialogTitle::Repository,
+        RepositoryPickerPurpose::Directory => DialogTitle::Directory,
+    };
     Ok(rfd::AsyncFileDialog::new()
-        .set_title("Open a Git repository")
+        .set_title(dialog_title(&state, title))
         .set_directory(std::env::current_dir().unwrap_or_else(|_| state.profile_directory.clone()))
         .pick_folder()
         .await
@@ -74,10 +84,29 @@ pub async fn open_repository(
     app: AppHandle,
     state: State<'_, AppState>,
     path: String,
+    request_id: Option<String>,
+    scope_root: Option<String>,
 ) -> Result<Repository> {
-    let repo = state.open(&path).await?;
-    state.watch(&app, &repo);
-    Ok(repo)
+    state
+        .open(&path, request_id.as_deref(), scope_root.as_deref(), &app)
+        .await
+}
+
+#[tauri::command]
+pub async fn probe_repository(
+    state: State<'_, AppState>,
+    candidate: RepositoryCandidate,
+    scope_root: String,
+    request_id: String,
+) -> Result<state::RepositorySummary> {
+    state
+        .probe_repository(candidate, scope_root, request_id)
+        .await
+}
+
+#[tauri::command]
+pub fn deactivate_repository(state: State<'_, AppState>, request_id: Option<String>) -> Result<()> {
+    state.deactivate(request_id.as_deref())
 }
 
 #[tauri::command]
@@ -86,10 +115,47 @@ pub fn trust_repository(state: State<'_, AppState>, repo_id: String, trusted: bo
 }
 
 #[tauri::command]
-pub async fn discover_repositories(path: String, depth: usize) -> Result<Vec<String>> {
-    tokio::task::spawn_blocking(move || state::discover(std::path::Path::new(&path), depth))
+pub fn get_trust_state(
+    state: State<'_, AppState>,
+    repo_id: Option<String>,
+) -> Result<NativeTrustState> {
+    state.get_trust_state(repo_id.as_deref())
+}
+
+#[tauri::command]
+pub fn set_directory_trust(
+    state: State<'_, AppState>,
+    path: String,
+    trusted: bool,
+) -> Result<NativeTrustState> {
+    state.set_directory_trust(&path, trusted)
+}
+
+#[tauri::command]
+pub fn set_repository_trust(
+    state: State<'_, AppState>,
+    repo_id: String,
+    decision: RepositoryTrustDecision,
+) -> Result<NativeTrustState> {
+    state.set_repository_trust(&repo_id, decision)
+}
+
+#[tauri::command]
+pub async fn discover_repositories(
+    state: State<'_, AppState>,
+    path: String,
+    depth: usize,
+    request_id: Option<String>,
+) -> Result<RepositoryDiscovery> {
+    state
+        .discovery
+        .discover(
+            state.git.clone(),
+            path,
+            depth,
+            request_id.unwrap_or_else(|| state.next_id("discover")),
+        )
         .await
-        .map_err(AppError::io)?
 }
 
 #[tauri::command]
@@ -99,14 +165,14 @@ pub async fn get_refs(
     request_id: String,
 ) -> Result<Vec<GitRef>> {
     let _request = state.git.begin_request(&request_id)?;
-    let repo = state.repository(&repo_id)?;
+    let repo = state.repository_for_request(&repo_id, &request_id, false)?;
     state.git.refs(&repo, &request_id).await
 }
 
 #[tauri::command]
 pub async fn get_history(state: State<'_, AppState>, query: HistoryQuery) -> Result<HistoryPage> {
     let _request = state.git.begin_request(&query.request_id)?;
-    let repo = state.repository(&query.repo_id)?;
+    let repo = state.repository_for_request(&query.repo_id, &query.request_id, false)?;
     state.git.history(&repo, query).await
 }
 
@@ -117,8 +183,19 @@ pub async fn get_working_state(
     request_id: String,
 ) -> Result<WorkingState> {
     let _request = state.git.begin_request(&request_id)?;
-    let repo = state.repository(&repo_id)?;
+    let repo = state.repository_for_request(&repo_id, &request_id, false)?;
     state.git.working_state(&repo, &request_id).await
+}
+
+#[tauri::command]
+pub async fn get_working_index(
+    state: State<'_, AppState>,
+    repo_id: String,
+    request_id: String,
+) -> Result<String> {
+    let _request = state.git.begin_request(&request_id)?;
+    let repo = state.repository_for_request(&repo_id, &request_id, false)?;
+    state.git.working_index(&repo, &request_id).await
 }
 
 #[tauri::command]
@@ -130,7 +207,7 @@ pub async fn get_commit_detail(
     parent: Option<String>,
 ) -> Result<CommitDetail> {
     let _request = state.git.begin_request(&request_id)?;
-    let repo = state.repository(&repo_id)?;
+    let repo = state.repository_for_request(&repo_id, &request_id, false)?;
     let mailmap = crate::settings::effective(&state.persisted.lock().unwrap(), Some(&repo_id))
         .get("mailmap")
         .and_then(|value| value.as_bool())
@@ -147,21 +224,21 @@ pub async fn compare_commits(
     query: ComparisonQuery,
 ) -> Result<Vec<ChangedFile>> {
     let _request = state.git.begin_request(&query.request_id)?;
-    let repo = state.repository(&query.repo_id)?;
+    let repo = state.repository_for_request(&query.repo_id, &query.request_id, false)?;
     state.git.compare(&repo, query).await
 }
 
 #[tauri::command]
 pub async fn get_diff(state: State<'_, AppState>, query: DiffQuery) -> Result<DiffResult> {
     let _request = state.git.begin_request(&query.request_id)?;
-    let repo = state.repository(&query.repo_id)?;
+    let repo = state.repository_for_request(&query.repo_id, &query.request_id, false)?;
     state.git.diff(&repo, query).await
 }
 
 #[tauri::command]
 pub async fn get_diff_patch(state: State<'_, AppState>, query: DiffQuery) -> Result<DiffResult> {
     let _request = state.git.begin_request(&query.request_id)?;
-    let repo = state.repository(&query.repo_id)?;
+    let repo = state.repository_for_request(&query.repo_id, &query.request_id, false)?;
     state.git.diff_patch(&repo, query).await
 }
 
@@ -172,7 +249,7 @@ pub async fn get_file_content(
     side: String,
 ) -> Result<DiffResult> {
     let _request = state.git.begin_request(&query.request_id)?;
-    let repo = state.repository(&query.repo_id)?;
+    let repo = state.repository_for_request(&query.repo_id, &query.request_id, false)?;
     state.git.content_side(&repo, query, &side).await
 }
 
@@ -183,7 +260,7 @@ pub async fn get_stashes(
     request_id: String,
 ) -> Result<Vec<Stash>> {
     let _request = state.git.begin_request(&request_id)?;
-    let repo = state.repository(&repo_id)?;
+    let repo = state.repository_for_request(&repo_id, &request_id, false)?;
     state.git.stashes(&repo, &request_id).await
 }
 
@@ -194,7 +271,7 @@ pub async fn get_remotes(
     request_id: String,
 ) -> Result<Vec<Remote>> {
     let _request = state.git.begin_request(&request_id)?;
-    let repo = state.repository(&repo_id)?;
+    let repo = state.repository_for_request(&repo_id, &request_id, false)?;
     state.git.remotes(&repo, &request_id).await
 }
 
@@ -205,7 +282,7 @@ pub async fn get_repo_config(
     request_id: String,
 ) -> Result<RepoConfig> {
     let _request = state.git.begin_request(&request_id)?;
-    let repo = state.repository(&repo_id)?;
+    let repo = state.repository_for_request(&repo_id, &request_id, false)?;
     state.git.repo_config(&repo, &request_id).await
 }
 
@@ -216,7 +293,7 @@ pub async fn git_action(
     action: GitAction,
 ) -> Result<ActionResult> {
     let _request = state.git.begin_request(&action.request_id)?;
-    let repo = state.repository(&action.repo_id)?;
+    let repo = state.repository_for_request(&action.repo_id, &action.request_id, true)?;
     if !repo.trusted {
         return Err(AppError::new(
             "UNTRUSTED",
@@ -228,6 +305,7 @@ pub async fn git_action(
         return Ok(ActionResult {
             output: session.message,
             operation: session.operation,
+            preview_token: None,
             session_id: Some(session.id),
             status: Some("started".into()),
         });
@@ -242,24 +320,59 @@ pub async fn git_action(
 }
 
 #[tauri::command]
+pub async fn working_action(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    action: WorkingAction,
+) -> Result<ActionResult> {
+    let _request = state.git.begin_request(&action.request_id)?;
+    let repo = state.repository_for_request(&action.repo_id, &action.request_id, true)?;
+    if !repo.trusted {
+        return Err(AppError::new(
+            "UNTRUSTED",
+            "Trust this repository before running Git operations.",
+        ));
+    }
+    let _transaction = state
+        .git
+        .repository_transaction(&repo, &action.request_id)
+        .await?;
+    let result = state.git.working_action(&repo, action).await;
+    let _ = app.emit("repository-changed", &repo.id);
+    result
+}
+
+#[tauri::command]
 pub fn cancel_request(state: State<'_, AppState>, request_id: String) {
-    state.git.cancel(&request_id);
+    state.cancel_request(&request_id);
 }
 
 #[tauri::command]
 pub fn open_terminal(state: State<'_, AppState>, repo_id: String) -> Result<()> {
-    system::terminal(&state, &state.repository(&repo_id)?)
+    let request_id = state.next_id("terminal");
+    let _request = state.git.begin_request(&request_id)?;
+    let repo = state.repository_for_request(&repo_id, &request_id, true)?;
+    state
+        .git
+        .with_repository_authorization(&repo, &request_id, true, || system::terminal(&state, &repo))
 }
 
 #[tauri::command]
 pub fn open_editor(state: State<'_, AppState>, repo_id: String, path: String) -> Result<()> {
-    system::editor(&state, &state.repository(&repo_id)?, &path)
+    let request_id = state.next_id("editor");
+    let _request = state.git.begin_request(&request_id)?;
+    let repo = state.repository_for_request(&repo_id, &request_id, true)?;
+    state
+        .git
+        .with_repository_authorization(&repo, &request_id, true, || {
+            system::editor(&state, &repo, &path)
+        })
 }
 
 #[tauri::command]
 pub async fn external_diff(state: State<'_, AppState>, query: DiffQuery) -> Result<()> {
     let _request = state.git.begin_request(&query.request_id)?;
-    let repo = state.repository(&query.repo_id)?;
+    let repo = state.repository_for_request(&query.repo_id, &query.request_id, false)?;
     let _transaction = state
         .git
         .repository_transaction(&repo, &query.request_id)
@@ -295,7 +408,7 @@ pub async fn export_config(app: AppHandle, repo_id: Option<String>) -> Result<bo
     let (settings, _) = crate::settings::shared_settings(&effective)?;
     let value = serde_json::json!({"version":2,"settings":settings});
     let file = rfd::AsyncFileDialog::new()
-        .set_title("Export shareable QGitGraph configuration")
+        .set_title(dialog_title(&state, DialogTitle::Export))
         .set_directory(std::env::current_dir().unwrap_or_else(|_| state.profile_directory.clone()))
         .set_file_name("qgitgraph-settings.json")
         .add_filter("JSON", &["json"])
@@ -316,7 +429,7 @@ pub async fn export_config(app: AppHandle, repo_id: Option<String>) -> Result<bo
 #[tauri::command]
 pub async fn import_config(state: State<'_, AppState>) -> Result<Option<ConfigImport>> {
     let Some(file) = rfd::AsyncFileDialog::new()
-        .set_title("Import shareable QGitGraph configuration")
+        .set_title(dialog_title(&state, DialogTitle::Import))
         .set_directory(std::env::current_dir().unwrap_or_else(|_| state.profile_directory.clone()))
         .add_filter("JSON", &["json"])
         .pick_file()
@@ -357,8 +470,11 @@ pub async fn get_snapshot(
     request_id: String,
 ) -> Result<RepositorySnapshot> {
     let _request = state.git.begin_request(&request_id)?;
-    let repo = state.repository(&repo_id)?;
+    let repo = state.repository_for_request(&repo_id, &request_id, false)?;
     let mut snapshot = state.git.snapshot(&repo, &request_id).await?;
+    state
+        .git
+        .check_repository_authorization(&repo, &request_id, false)?;
     let mut repositories = state.repositories.lock().unwrap();
     if let Some(current) = repositories.get(&repo_id) {
         snapshot.repository.trusted = current.trusted;
@@ -374,7 +490,7 @@ pub async fn get_tag_detail(
     request_id: String,
 ) -> Result<TagDetail> {
     let _request = state.git.begin_request(&request_id)?;
-    let repo = state.repository(&repo_id)?;
+    let repo = state.repository_for_request(&repo_id, &request_id, false)?;
     state.git.tag_detail(&repo, &target, &request_id).await
 }
 #[tauri::command]
@@ -385,7 +501,7 @@ pub async fn get_stash_detail(
     request_id: String,
 ) -> Result<StashDetail> {
     let _request = state.git.begin_request(&request_id)?;
-    let repo = state.repository(&repo_id)?;
+    let repo = state.repository_for_request(&repo_id, &request_id, false)?;
     state.git.stash_detail(&repo, &selector, &request_id).await
 }
 #[tauri::command]
@@ -396,7 +512,7 @@ pub async fn get_containment(
     request_id: String,
 ) -> Result<Containment> {
     let _request = state.git.begin_request(&request_id)?;
-    let repo = state.repository(&repo_id)?;
+    let repo = state.repository_for_request(&repo_id, &request_id, false)?;
     state.git.containment(&repo, &oid, &request_id).await
 }
 #[tauri::command]
@@ -406,7 +522,7 @@ pub async fn get_submodules(
     request_id: String,
 ) -> Result<Vec<SubmoduleInfo>> {
     let _request = state.git.begin_request(&request_id)?;
-    let repo = state.repository(&repo_id)?;
+    let repo = state.repository_for_request(&repo_id, &request_id, false)?;
     state.git.submodules(&repo, &request_id).await
 }
 #[tauri::command]
@@ -415,7 +531,7 @@ pub async fn verify_signature(
     query: VerifyQuery,
 ) -> Result<VerificationResult> {
     let _request = state.git.begin_request(&query.request_id)?;
-    let repo = state.repository(&query.repo_id)?;
+    let repo = state.repository_for_request(&query.repo_id, &query.request_id, false)?;
     let _transaction = state
         .git
         .repository_transaction(&repo, &query.request_id)
@@ -429,13 +545,13 @@ pub async fn open_snapshot(
     side: String,
 ) -> Result<()> {
     let _request = state.git.begin_request(&query.request_id)?;
-    let repo = state.repository(&query.repo_id)?;
+    let repo = state.repository_for_request(&query.repo_id, &query.request_id, false)?;
     system::open_snapshot(&state, &repo, query, &side).await
 }
 #[tauri::command]
 pub async fn archive_ref(state: State<'_, AppState>, query: ArchiveQuery) -> Result<bool> {
     let _request = state.git.begin_request(&query.request_id)?;
-    let repo = state.repository(&query.repo_id)?;
+    let repo = state.repository_for_request(&query.repo_id, &query.request_id, false)?;
     if !repo.trusted {
         return Err(AppError::new(
             "UNTRUSTED",
@@ -465,7 +581,7 @@ pub async fn archive_ref(state: State<'_, AppState>, query: ArchiveQuery) -> Res
         ));
     }
     let Some(file) = rfd::AsyncFileDialog::new()
-        .set_title("Export repository archive")
+        .set_title(dialog_title(&state, DialogTitle::Archive))
         .set_file_name(format!("{}-{}.{}", repo.name, &oid[..8], query.format))
         .add_filter("Archive", &[query.format.as_str()])
         .save_file()
@@ -492,6 +608,13 @@ pub async fn archive_ref(state: State<'_, AppState>, query: ArchiveQuery) -> Res
             false,
         )
         .await?;
-    std::fs::write(file.path(), output).map_err(AppError::io)?;
+    state
+        .git
+        .check_repository_authorization(&repo, &query.request_id, true)?;
+    state
+        .git
+        .with_repository_authorization(&repo, &query.request_id, true, || {
+            std::fs::write(file.path(), output).map_err(AppError::io)
+        })?;
     Ok(true)
 }

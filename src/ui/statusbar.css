@@ -1,0 +1,141 @@
+/* Compact, neutral status surface. Global theme tokens remain owned by styles.css. */
+.statusbar.statusbar--compact {
+  container: compact-statusbar / inline-size;
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 28px;
+  gap: 6px;
+  min-width: 0;
+  min-height: 28px;
+  height: 28px;
+  padding: 0 7px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.25;
+  user-select: none;
+}
+.statusbar--compact .statusbar-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  height: 100%;
+}
+.statusbar--compact .statusbar-context { flex: 0 2 auto; max-width: 42%; }
+.statusbar--compact .statusbar-working { flex: 1 2 auto; justify-content: flex-start; }
+.statusbar--compact .statusbar-activity { flex: 0 1 auto; margin-left: auto; justify-content: flex-end; }
+.statusbar--compact .statusbar-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  flex: 0 1 auto;
+  min-width: 0;
+  min-height: 24px;
+  height: 24px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  white-space: nowrap;
+  line-height: inherit;
+  font: inherit;
+  text-align: start;
+}
+.statusbar--compact .statusbar-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.statusbar--compact .statusbar-item > .icon,
+.statusbar--compact .statusbar-task-glyph > .icon { width: 13px; height: 13px; flex: 0 0 13px; }
+.statusbar--compact .statusbar-task-glyph { display: inline-flex; align-items: center; flex: 0 0 13px; }
+.statusbar--compact button.statusbar-item:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
+.statusbar--compact button.statusbar-item:active:not(:disabled) { background: var(--surface-active); }
+.statusbar--compact button.statusbar-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; color: var(--text); }
+.statusbar--compact .statusbar-repository { max-width: 170px; color: var(--text); }
+.statusbar--compact .statusbar-location { max-width: 150px; }
+.statusbar--compact .statusbar-branch { max-width: 190px; color: var(--text); }
+.statusbar--compact .statusbar-sync { max-width: 170px; }
+.statusbar--compact .statusbar-summary { max-width: 210px; }
+.statusbar--compact .statusbar-counts { max-width: 290px; }
+.statusbar--compact .statusbar-operation { max-width: 155px; color: var(--warning); }
+.statusbar--compact .statusbar-conflicts { flex: 0 0 auto; color: var(--danger); }
+.statusbar--compact .statusbar-history { max-width: 250px; }
+.statusbar--compact .statusbar-task { max-width: 260px; }
+.statusbar--compact .task-text { max-width: none; }
+.statusbar--compact .statusbar-task[data-tone='error'] { color: var(--danger); }
+.statusbar--compact .statusbar-task[data-tone='warning'] { color: var(--warning); }
+.statusbar--compact .statusbar-refresh { max-width: 150px; }
+.statusbar--compact .statusbar-cancel,
+.statusbar--compact .statusbar-details { justify-content: center; flex: 0 0 25px; width: 25px; padding: 0; }
+.statusbar--compact .statusbar-language { justify-content: center; flex: 0 0 auto; min-width: 25px; padding-inline: 4px; }
+.statusbar--compact[data-stale='true'] .statusbar-summary { color: var(--warning); }
+.statusbar--compact[data-has-conflicts='true'] .statusbar-summary { color: var(--text-muted); }
+.statusbar--compact[data-busy='true'] .statusbar-activity { flex-shrink: 0; max-width: 42%; }
+.statusbar--compact[data-busy='true'] .statusbar-task { min-width: 86px; }
+.statusbar--compact[data-has-operation='true'] .statusbar-operation { flex-shrink: 0; }
+.statusbar--compact .statusbar-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.statusbar-dialog { width: min(700px, calc(100vw - 36px)); }
+.statusbar-dialog .statusbar-facts { display: grid; gap: 10px; margin: 0; }
+.statusbar-dialog .statusbar-fact { display: grid; grid-template-columns: minmax(110px, 170px) minmax(0, 1fr); gap: 14px; }
+.statusbar-dialog .statusbar-fact dt { color: var(--text-muted); }
+.statusbar-dialog .statusbar-fact dd { min-width: 0; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.statusbar-dialog .statusbar-detail-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 20px; }
+.statusbar-dialog .statusbar-detail-actions > .button { border-color: var(--border); }
+
+/* Every elided item remains available through the keyboard-operable details button. */
+@container compact-statusbar (max-width: 1300px) {
+  .statusbar--compact .statusbar-tier-tertiary { display: none !important; }
+  .statusbar--compact .statusbar-context { max-width: 32%; }
+  .statusbar--compact .statusbar-repository { max-width: 115px; }
+  .statusbar--compact .statusbar-branch { max-width: 155px; }
+  .statusbar--compact .statusbar-counts { max-width: 230px; }
+  .statusbar--compact .statusbar-task { max-width: 230px; }
+}
+@container compact-statusbar (max-width: 1050px) {
+  .statusbar--compact .statusbar-counts { display: none !important; }
+  .statusbar--compact .statusbar-repository { max-width: 95px; }
+  .statusbar--compact .statusbar-branch { max-width: 130px; }
+  .statusbar--compact .statusbar-task { max-width: 205px; }
+  .statusbar--compact .statusbar-summary { max-width: 150px; }
+}
+@container compact-statusbar (max-width: 850px) {
+  .statusbar--compact .statusbar-tier-secondary { display: none !important; }
+  .statusbar--compact .statusbar-context { flex: 0 3 auto; max-width: 19%; }
+  .statusbar--compact .statusbar-branch { max-width: 115px; }
+  .statusbar--compact .statusbar-operation { max-width: 125px; }
+  .statusbar--compact .statusbar-task { max-width: 175px; }
+  .statusbar--compact .statusbar-summary { max-width: 135px; }
+  .statusbar--compact[data-has-conflicts='true'] .statusbar-summary,
+  .statusbar--compact[data-has-operation='true'] .statusbar-summary { display: none !important; }
+}
+@container compact-statusbar (max-width: 670px) {
+  .statusbar--compact .statusbar-context { max-width: 16%; }
+  .statusbar--compact .statusbar-branch { max-width: 95px; }
+  .statusbar--compact .statusbar-task { max-width: 145px; }
+  .statusbar--compact .statusbar-operation { max-width: 115px; }
+  .statusbar--compact[data-busy='true'][data-has-conflicts='true'] .statusbar-operation { display: none !important; }
+  .statusbar--compact[data-busy='false'] .statusbar-task { max-width: 110px; }
+}
+@media (forced-colors: active) {
+  .statusbar--compact .statusbar-conflicts,
+  .statusbar--compact .statusbar-operation { color: CanvasText; }
+}

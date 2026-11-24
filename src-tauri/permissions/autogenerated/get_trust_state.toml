@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-trust-state"
+description = "Enables the get_trust_state command without any pre-configured scope."
+commands.allow = ["get_trust_state"]
+
+[[permission]]
+identifier = "deny-get-trust-state"
+description = "Denies the get_trust_state command without any pre-configured scope."
+commands.deny = ["get_trust_state"]

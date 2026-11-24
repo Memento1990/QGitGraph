@@ -19,6 +19,31 @@ describe('local preferences', () => {
     const normalized = normalizeState(state, now);
     expect(normalized.reviews.map(review => review.key)).toEqual(['new']); expect(normalized.settings.pageSize).toBe(1000); expect(normalized.settings.rowHeight).toBe(22); expect(normalized.layout.detailSize).toBe(1200);
   });
+  it('adds v2 layout defaults only when absent and keeps 0.3 language, scope and pane choices', () => {
+    const fresh = { detailSize: 320, fileSize: 260, localWidth: 390, localListSize: 230, detailRatio: 0.55 };
+    expect(defaultState().layout).toEqual(fresh); expect(normalizeState({ version: 2 }).layout).toEqual(fresh);
+    const saved = { version: 2, settings: { language: 'zh-CN', startupScope: { kind: 'head' } },
+      layout: { detailSize: 360, fileSize: 280 }, directoryScope: { root: 'D:/Projects', depth: 3, width: 180, collapsed: true, collapsedPaths: ['repo'] } };
+    const state = normalizeState(saved);
+    expect(state.version).toBe(2); expect(state.layout).toEqual({ ...fresh, detailSize: 360, fileSize: 280 });
+    expect(state.settings).toMatchObject({ language: 'zh-CN', startupScope: { kind: 'head' }, localChangesPosition: 'middle' });
+    expect(state.directoryScope).toEqual(saved.directoryScope); expect(normalizeState(state)).toEqual(state);
+  });
+  it('retains the existing legacy layout clamp and fractional pixel behavior', () => {
+    expect(normalizeState({ layout: { detailSize: 100, fileSize: 100 } }).layout).toMatchObject({ detailSize: 140, fileSize: 150 });
+    expect(normalizeState({ layout: { detailSize: 2000, fileSize: 2000 } }).layout).toMatchObject({ detailSize: 1200, fileSize: 700 });
+    expect(normalizeState({ layout: { detailSize: 401.25, fileSize: 300.75 } }).layout).toMatchObject({ detailSize: 401.25, fileSize: 300.75 });
+  });
+  it('normalizes finite layout values and strips unknown layout data', () => {
+    const state = normalizeState({ layout: { detailSize: 401.4, fileSize: 300.7, localWidth: 10000, localListSize: -1, detailRatio: 0.625, draft: 'private' } });
+    expect(state.layout).toEqual({ detailSize: 401.4, fileSize: 300.7, localWidth: 960, localListSize: 100, detailRatio: 0.625 });
+    for (const invalid of [NaN, Infinity, -Infinity, '500', null, {}]) {
+      expect(normalizeState({ layout: { localWidth: invalid, localListSize: invalid, detailRatio: invalid } }).layout)
+        .toMatchObject({ localWidth: 390, localListSize: 230, detailRatio: 0.55 });
+    }
+    expect(normalizeState({ layout: { detailRatio: 0.01 } }).layout.detailRatio).toBe(0.2);
+    expect(normalizeState({ layout: { detailRatio: 9 } }).layout.detailRatio).toBe(0.8);
+  });
   it('keeps review sessions isolated by repo and comparison and saves partial overrides', async () => {
     const save = vi.fn(async () => undefined); const store = new StateStore(save, () => undefined);
     store.review('commit:a', 'one', 'file.ts', true); store.review('commit:a', 'two', 'other.ts', true);

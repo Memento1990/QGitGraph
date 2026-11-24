@@ -2,8 +2,8 @@ import type {
   ActionResult, ArchiveQuery, ChangedFile, CommitDetail, ComparisonQuery, ConfigImport,
   Containment, Diagnostics, DiffQuery, DiffResult, ExternalSession, GitAction, GitRef, GithubUpdateInfo,
   HistoryPage, HistoryQuery, Host, NativePerformanceData, PersistedState, Remote, RepoConfig, Repository,
-  RepositorySnapshot, Stash, StashDetail, SubmoduleInfo, TagDetail, VerificationResult,
-  VerifyQuery, WorkingState,
+  RepositoryCandidate, RepositoryDiscovery, RepositorySnapshot, RepositorySummary, Stash, StashDetail, SubmoduleInfo, TagDetail, VerificationResult,
+  VerifyQuery, WorkingAction, WorkingState, NativeTrustState, UsageBoundary, UsageEventInput, UsageStart, UsageStatus,
 } from '../shared/protocol';
 import { defaultState } from '../shared/protocol';
 import { configurePerformance, performanceDiagnostics as perf } from '../lib/performance';
@@ -36,17 +36,37 @@ export class DesktopHost implements Host {
     }).finally(() => { this.performanceCollection = undefined; if (this.performanceDirty) this.collectPerformance(); });
   }
   async diagnostics() {
-    const value = await this.invoke<Diagnostics>('diagnostics'); configurePerformance(value.performanceEnabled);
+    const value = await this.invoke<Diagnostics>('diagnostics'); value.hostMode = 'desktop'; configurePerformance(value.performanceEnabled);
     if (value.performanceEnabled) this.collectPerformance(); return value;
   }
   checkForUpdates() { return this.invoke<GithubUpdateInfo>('check_for_updates'); }
   getPerformanceData(clear = false) { return this.invoke<NativePerformanceData>('get_performance_data', { clear }); }
+  usageStatus() { return this.invoke<UsageStatus>('usage_status'); }
+  usageStart(input: UsageStart) { return this.invoke<UsageStatus>('usage_start', { input }); }
+  usageBoundary(boundary: UsageBoundary) { return this.invoke<UsageStatus>('usage_boundary', { boundary }); }
+  usageAppend(event: UsageEventInput) { return this.invoke<UsageStatus>('usage_append', { event }); }
   loadState() { return this.invoke<PersistedState>('load_state'); }
   saveState(value: PersistedState) { return this.invoke<void>('save_state', { value }); }
-  pickRepository() { return this.invoke<string | null>('pick_repository'); }
-  openRepository(path: string) { return this.invoke<Repository>('open_repository', { path }); }
+  pickRepository(purpose: 'repository' | 'directory' = 'repository') { return this.invoke<string | null>('pick_repository', { purpose }); }
+  openRepository(path: string, requestId?: string, scopeRoot?: string) { return this.invoke<Repository>('open_repository', { path, requestId, scopeRoot }); }
+  deactivateRepository(requestId?: string) { return this.invoke<void>('deactivate_repository', { requestId }); }
   trustRepository(repoId: string, trusted: boolean) { return this.invoke<void>('trust_repository', { repoId, trusted }); }
-  discoverRepositories(path: string, depth: number) { return this.invoke<string[]>('discover_repositories', { path, depth }); }
+  trustState(repoId?: string) { return this.invoke<NativeTrustState>('get_trust_state', { repoId }); }
+  setDirectoryTrust(path: string, trusted: boolean) { return this.invoke<NativeTrustState>('set_directory_trust', { path, trusted }); }
+  setRepositoryTrust(repoId: string, decision: 'allow' | 'deny' | 'inherit') { return this.invoke<NativeTrustState>('set_repository_trust', { repoId, decision }); }
+  async windowAction(action: 'minimize' | 'toggle-maximize' | 'close' | 'drag') {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    const window = getCurrentWindow();
+    if (action === 'minimize') await window.minimize();
+    else if (action === 'toggle-maximize') await window.toggleMaximize();
+    else if (action === 'close') await window.close();
+    else await window.startDragging();
+  }
+  async windowMaximized() { const { getCurrentWindow } = await import('@tauri-apps/api/window'); return getCurrentWindow().isMaximized(); }
+  discoverRepositories(path: string, depth: number, requestId?: string) { return this.invoke<RepositoryDiscovery>('discover_repositories', { path, depth, requestId }); }
+  probeRepository(candidate: RepositoryCandidate, scopeRoot: string, requestId: string) { return this.invoke<RepositorySummary>('probe_repository', { candidate, scopeRoot, requestId }); }
+  workingAction(action: WorkingAction) { return this.invoke<ActionResult>('working_action', { action }); }
+  workingIndex(repoId: string, requestId: string) { return this.invoke<string>('get_working_index', { repoId, requestId }); }
   snapshot(repoId: string, requestId: string) { return this.invoke<RepositorySnapshot>('get_snapshot', { repoId, requestId }); }
   refs(repoId: string, requestId: string) { return this.invoke<GitRef[]>('get_refs', { repoId, requestId }); }
   history(query: HistoryQuery) { return this.invoke<HistoryPage>('get_history', { query }); }
@@ -85,15 +105,16 @@ export class DesktopHost implements Host {
 
 class BrowserHost implements Host {
   private state = defaultState();
-  diagnostics(): Promise<Diagnostics> { return Promise.resolve({ appVersion: '0.2.2', gitVersion: null, gitPath: null, platform: 'browser · desktop host required' }); }
-  checkForUpdates(): Promise<GithubUpdateInfo> { return Promise.resolve({ status: 'unsupported', currentVersion: '0.2.2', latestVersion: null, releaseTag: null, releaseUrl: null, publishedAt: null, releaseNotes: null, notesTruncated: false }); }
+  diagnostics(): Promise<Diagnostics> { return Promise.resolve({ appVersion: '0.3.0', gitVersion: null, gitPath: null, platform: 'browser · desktop host required', hostMode: 'browser' }); }
+  checkForUpdates(): Promise<GithubUpdateInfo> { return Promise.resolve({ status: 'unsupported', currentVersion: '0.3.0', latestVersion: null, releaseTag: null, releaseUrl: null, publishedAt: null, releaseNotes: null, notesTruncated: false }); }
   loadState() { return Promise.resolve(structuredClone(this.state)); }
   saveState(value: PersistedState) { this.state = structuredClone(value); return Promise.resolve(); }
   protected unavailable(): never { throw { code: 'DESKTOP_REQUIRED', message: 'Open the QGitGraph desktop application to access local Git repositories. The browser preview cannot read your filesystem.' }; }
-  async pickRepository(): Promise<string | null> { return this.unavailable(); }
-  async openRepository(_path: string): Promise<Repository> { return this.unavailable(); }
+  async pickRepository(_purpose?: 'repository' | 'directory'): Promise<string | null> { return this.unavailable(); }
+  async openRepository(_path: string, _requestId?: string, _scopeRoot?: string): Promise<Repository> { return this.unavailable(); }
+  async deactivateRepository(_requestId?: string): Promise<void> { return this.unavailable(); }
   async trustRepository(_repoId: string, _trusted: boolean): Promise<void> { return this.unavailable(); }
-  async discoverRepositories(_path: string, _depth: number): Promise<string[]> { return this.unavailable(); }
+  async discoverRepositories(_path: string, _depth: number, _requestId?: string): Promise<RepositoryDiscovery> { return this.unavailable(); }
   async snapshot(_repoId: string, _requestId: string): Promise<RepositorySnapshot> { return this.unavailable(); }
   async refs(_repoId: string, _requestId: string): Promise<GitRef[]> { return this.unavailable(); }
   async history(_query: HistoryQuery): Promise<HistoryPage> { return this.unavailable(); }

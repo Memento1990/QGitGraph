@@ -143,7 +143,7 @@ export class WebDriver {
     await this.call('DELETE', `${this.prefix}/actions`);
   }
   async state() {
-    return this.script('const e=document.querySelector(".app-shell");return e ? {repoPath:e.dataset.repoPath,repoHead:e.dataset.repoHead,taskState:e.dataset.taskState,taskSequence:e.dataset.taskSequence,configDirectory:e.dataset.configDirectory,errors:[...document.querySelectorAll(".errorbar:not([hidden]),dialog[open] .form-error:not([hidden])")].map(e=>e.innerText)} : null;');
+    return this.script('const e=document.querySelector(".app-shell");const legacy=[...document.querySelectorAll(".errorbar:not([hidden]),dialog[open] .form-error:not([hidden])")];const vue=[...document.querySelectorAll(".notice-strip.error[role=alert],.ch-error[role=alert],.hp-error[role=alert],.ci-state[role=alert],.dp-state[role=alert],[role=dialog] [role=alert]")].filter(e=>e.getClientRects().length&&getComputedStyle(e).display!=="none"&&getComputedStyle(e).visibility!=="hidden");return e ? {repoPath:e.dataset.repoPath,repoHead:e.dataset.repoHead,taskState:e.dataset.taskState,taskSequence:e.dataset.taskSequence,configDirectory:e.dataset.configDirectory,errors:[...new Set([...legacy,...vue])].map(e=>e.innerText)} : null;');
   }
   async idle(label, afterSequence) {
     return until(label, async () => {

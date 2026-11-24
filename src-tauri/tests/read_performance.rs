@@ -608,7 +608,7 @@ async fn worktree_index_root_and_untracked_previews_preserve_read_only_contract(
         .await
         .unwrap();
     assert!(unchanged.patch.is_empty() && !unchanged.binary && !unchanged.truncated);
-    f.assert_launches(&["diff", "ls-files"]);
+    f.assert_launches(&["config", "ls-files", "diff", "ls-files"]);
     let unborn = Fixture::new();
     unborn.write(FILE, b"new\n");
     let patch = unborn
@@ -650,7 +650,38 @@ async fn snapshot_reads_one_stash_list_and_reuses_complete_stash_metadata() {
         .refs
         .iter()
         .any(|item| item.full_name == stash.selector && item.oid == stash.oid));
-    f.assert_launches(&["for-each-ref", "stash", "status", "config"]);
+    // 两次 index token 前后夹住快照；另枚举 gitlink 防止 status 隐式递归子仓过滤器。
+    f.assert_launches(&[
+        "ls-files",
+        "hash-object",
+        "for-each-ref",
+        "stash",
+        "status",
+        "config",
+        "config",
+        "ls-files",
+        "ls-files",
+        "hash-object",
+    ]);
+    let filter_checks = f
+        .launches()
+        .into_iter()
+        .filter(|args| {
+            args.windows(5).any(|part| {
+                part == [
+                    "config",
+                    "--null",
+                    "--includes",
+                    "--get-regexp",
+                    "^filter\\..*\\.(clean|smudge|process|required)$",
+                ]
+            })
+        })
+        .count();
+    assert_eq!(
+        filter_checks, 1,
+        "Untrusted status requires exactly one filter safety preflight."
+    );
     f.clear_trace();
     let (refs, stashes) = f
         .service
@@ -736,7 +767,7 @@ async fn quiet_optional_head_preserves_missing_object_and_unborn_errors() {
         .await
         .unwrap();
     assert!(patch.patch.is_empty());
-    f.assert_launches(&["rev-parse", "diff", "ls-files"]);
+    f.assert_launches(&["rev-parse", "config", "ls-files", "diff", "ls-files"]);
     f.remove_loose_object(&head);
     assert!(f
         .service

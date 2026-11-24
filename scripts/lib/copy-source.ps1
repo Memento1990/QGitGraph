@@ -8,7 +8,7 @@ if (Test-Path -LiteralPath $OutputDirectory) { throw 'Source staging directory a
 $source = [IO.Path]::GetFullPath($SourceDirectory).TrimEnd('\')
 $target = [IO.Path]::GetFullPath($OutputDirectory).TrimEnd('\')
 $null = New-Item -ItemType Directory -Path $target
-$list = Get-Content -LiteralPath $FileList -Raw | ConvertFrom-Json
+$list = Get-Content -LiteralPath $FileList -Raw -Encoding UTF8 | ConvertFrom-Json
 foreach ($item in @($list.files)) {
   $relative = [string]$item.path
   if ($relative -match '\\|(^|/)\.{1,2}(/|$)|^/|[\x00-\x1f<>:"|?*]' -or [string]::IsNullOrWhiteSpace($relative)) { throw 'Unsafe source archive path.' }

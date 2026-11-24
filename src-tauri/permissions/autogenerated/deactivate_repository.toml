@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-deactivate-repository"
+description = "Enables the deactivate_repository command without any pre-configured scope."
+commands.allow = ["deactivate_repository"]
+
+[[permission]]
+identifier = "deny-deactivate-repository"
+description = "Denies the deactivate_repository command without any pre-configured scope."
+commands.deny = ["deactivate_repository"]

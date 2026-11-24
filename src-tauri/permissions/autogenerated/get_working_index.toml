@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-working-index"
+description = "Enables the get_working_index command without any pre-configured scope."
+commands.allow = ["get_working_index"]
+
+[[permission]]
+identifier = "deny-get-working-index"
+description = "Denies the get_working_index command without any pre-configured scope."
+commands.deny = ["get_working_index"]

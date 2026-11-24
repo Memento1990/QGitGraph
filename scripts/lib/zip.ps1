@@ -10,7 +10,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 . (Join-Path $PSScriptRoot 'windows-processes.ps1') -Library
 if (Test-Path -LiteralPath $Archive) { throw 'Archive already exists; never overwrite a staged release.' }
 $root = [IO.Path]::GetFullPath($Directory).TrimEnd('\')
-$list = Get-Content -LiteralPath $FileList -Raw | ConvertFrom-Json
+$list = Get-Content -LiteralPath $FileList -Raw -Encoding UTF8 | ConvertFrom-Json
 $stream = $null
 $zip = $null
 $written = @()

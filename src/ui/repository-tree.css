@@ -1,0 +1,97 @@
+.repository-tree {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--surface-sunken);
+  container-type: inline-size;
+  container-name: repository-sidebar;
+}
+.repository-tree-header { flex: 0 0 auto; border-bottom: 1px solid var(--border); }
+.repository-tree-heading { display: flex; align-items: center; gap: 4px; min-height: 34px; padding: 3px 5px 3px 10px; }
+.repository-tree-heading > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .94rem; font-weight: 600; }
+.repository-tree-heading > .spacer { min-width: 0; }
+.repository-tree-count { flex: 0 0 auto; min-width: 18px; padding: 0 4px; border: 1px solid var(--border); border-radius: 3px; color: var(--text-muted); font-size: .8rem; text-align: center; white-space: nowrap; }
+.repository-tree-heading .icon-button { width: 24px; min-height: 25px; padding: 3px; }
+.repository-tree-collapse > .icon { transform: rotate(180deg); }
+.repository-tree-root { display: flex; align-items: center; gap: 6px; min-height: 31px; padding: 1px 6px 1px 10px; }
+.repository-tree-root > .icon { color: var(--text-muted); }
+.repository-tree-root-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.repository-tree-root .icon-button { width: 24px; min-height: 24px; padding: 3px; }
+.repository-tree-controls { display: flex; align-items: center; gap: 4px; min-height: 34px; padding: 2px 6px 5px 10px; }
+.repository-tree-depth { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--text-muted); font-size: .9rem; }
+.repository-tree-depth > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repository-tree-depth > select { flex: 0 0 52px; width: 52px; height: 25px; color: var(--text); }
+.repository-tree-controls .icon-button { width: 25px; min-height: 25px; padding: 3px; }
+.repository-tree-status { display: flex; align-items: flex-start; gap: 7px; flex: 0 0 auto; padding: 8px 10px; color: var(--text-muted); font-size: .86rem; line-height: 1.45; }
+.repository-tree-status > .spinner { margin-top: 2px; }
+.repository-tree-status.is-error { color: var(--danger); }
+.repository-tree-status.is-partial { color: var(--warning); }
+.repository-tree-rows { flex: 1 1 auto; min-height: 35px; overflow: auto; overscroll-behavior: contain; padding: 1px 0 8px; }
+.repository-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 5px 0 calc(4px + var(--repository-tree-level, 0) * 10px);
+  border: 1px solid transparent;
+  user-select: none;
+  cursor: default;
+}
+.repository-tree-row:hover { background: var(--surface-hover); }
+.repository-tree-row.is-active { background: var(--selected); box-shadow: inset 2px 0 0 var(--selected-border); }
+.repository-tree-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.repository-tree-row.is-repository .repository-tree-label { font-weight: 500; }
+.repository-tree-disclosure { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 13px; height: 24px; }
+.repository-tree-disclosure > .icon { width: 13px; height: 13px; }
+.repository-tree-row.is-expanded > .repository-tree-disclosure > .icon { transform: rotate(90deg); }
+.repository-tree-disclosure.is-leaf { visibility: hidden; }
+.repository-tree-disclosure:not(.is-leaf):hover { background: var(--surface-active); border-radius: 2px; }
+.repository-tree-glyph { display: inline-flex; align-items: center; flex: 0 0 16px; color: var(--text-muted); }
+.repository-tree-row.is-repository > .repository-tree-glyph { color: var(--accent); }
+.repository-tree-label { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.repository-tree-branch.button { display: inline-flex; align-items: center; justify-content: flex-end; gap: 3px; box-sizing: border-box; flex: 0 0 100px; width: 100px; min-width: 0; height: 24px; min-height: 24px; padding: 1px 2px; border-color: transparent; background: transparent; color: var(--text-muted); font-size: .82rem; }
+.repository-tree-branch > .icon { flex: 0 0 13px; width: 13px; height: 13px; }
+.repository-tree-branch-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repository-tree-row-status { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 16px; width: 16px; height: 16px; color: var(--text-muted); }
+.repository-tree-row-status > .icon, .repository-tree-row-status > .spinner { box-sizing: border-box; width: 13px; height: 13px; }
+.repository-tree-row-status[data-status='changed'] { color: var(--accent); }
+.repository-tree-row-status[data-status='error'] { color: var(--danger); }
+.repository-tree-row-status[data-status='stale'], .repository-tree-row-status[data-status='untrusted'] { color: var(--warning); }
+.repository-tree-actions { display: flex; justify-content: flex-end; align-items: center; flex: 0 0 96px; width: 96px; height: 24px; }
+.repository-tree-actions > .repository-tree-action { display: inline-flex; justify-content: center; align-items: center; box-sizing: border-box; flex: 0 0 24px; width: 24px; min-width: 24px; height: 24px; min-height: 24px; margin: 0; padding: 3px; border-color: transparent; background: transparent; color: var(--text-muted); opacity: 1; }
+.repository-tree-action > .icon { width: 14px; height: 14px; }
+.repository-tree-branch.button:hover, .repository-tree-action.button:hover { background: var(--surface-active); color: var(--text); }
+.repository-tree-branch.button:focus-visible, .repository-tree-action.button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.repository-tree-row:not(.is-repository) > .repository-tree-branch,
+.repository-tree-row:not(.is-repository) > .repository-tree-row-status,
+.repository-tree-row:not(.is-repository) > .repository-tree-actions { visibility: hidden; }
+.repository-tree-local { min-width: 0; padding: 4px 7px 8px 12px; border-block: 1px solid var(--border-subtle); background: var(--surface-sunken); }
+.repository-tree-local[hidden] { display: none; }
+@container repository-sidebar (max-width: 359px) {
+  .repository-tree-row { gap: 3px; padding-right: 4px; }
+  .repository-tree-branch.button { flex-basis: 72px; width: 72px; }
+}
+@media (forced-colors: active) {
+  .repository-tree-row.is-active { outline: 1px solid Highlight; outline-offset: -1px; }
+}
+.repository-tree-empty-hint { flex: 0 0 auto; padding: 2px 10px 10px; margin: 0; color: var(--text-muted); font-size: .87rem; }
+.repository-tree-details { flex: 0 0 auto; max-height: 35%; overflow: auto; border-top: 1px solid var(--border-subtle); padding: 6px 10px; font-size: .84rem; color: var(--text-muted); }
+.repository-tree-details > summary { cursor: default; }
+.repository-tree-details p { margin: 7px 0; }
+.repository-tree-metrics { overflow-wrap: anywhere; }
+.repository-tree-error { color: var(--danger); white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; }
+.repository-tree-diagnostics { padding-left: 18px; margin: 7px 0; color: var(--warning); }
+.repository-tree-diagnostics > li + li { margin-top: 5px; }
+.repository-tree-candidate-hint { line-height: 1.5; }
+.repository-tree-keyboard-hint { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) {
+  .repository-tree .spinner { animation: none; }
+}

@@ -1,8 +1,42 @@
+import type { UsageBoundary, UsageEventInput, UsageStart, UsageStatus } from '../controllers/usage';
+export type { UsageBoundary, UsageEventInput, UsageStart, UsageStatus } from '../controllers/usage';
+
 export interface Repository {
   id: string; path: string; name: string; gitDir: string; commonDir: string;
   head: string | null; branch: string | null; trusted: boolean; bare: boolean;
 }
+export interface RepositoryCandidate {
+  path: string; components: string[]; marker: 'git-directory' | 'git-file' | 'bare';
+}
+export interface RepositoryDiscovery {
+  root: string; repositories: RepositoryCandidate[]; complete: boolean; limit: string | null;
+  warnings: { code: string; count: number }[]; directories: number; entries: number;
+}
+export interface DirectoryScopeState {
+  root: string; depth: number; width: number; collapsed: boolean; collapsedPaths: string[];
+}
 
+export interface RepositorySummary {
+  path: string; branch: string | null; head: string | null; bare: boolean; trusted: boolean;
+  changes: number | null; staged: number | null; unstaged: number | null; untracked: number | null;
+  ahead: number | null; behind: number | null; upstream: string | null;
+}
+export interface WorkingFileTarget { path: string; oldPath?: string; status?: string }
+export interface WorkingAction {
+  repoId: string; requestId: string;
+  kind: 'stage' | 'unstage' | 'discard' | 'delete-untracked' | 'commit-staged' | 'sync';
+  files?: WorkingFileTarget[]; message?: string; confirmation?: string;
+  expectedHead?: string | null; expectedIndex?: string;
+  pullMode?: 'ff-only' | 'merge' | 'rebase'; noFastForward?: boolean; sign?: boolean;
+}
+
+export interface TrustRule { path: string; kind: 'directory' | 'repository'; decision: 'allow' | 'deny' }
+export interface RepositoryTrust {
+  repoId: string; path: string; trusted: boolean;
+  source: 'repository-allow' | 'repository-deny' | 'directory' | 'none';
+  rulePath: string | null; epoch: number;
+}
+export interface NativeTrustState { version: 1; rules: TrustRule[]; repositories: RepositoryTrust[] }
 export interface GitRef {
   name: string; fullName: string; oid: string;
   kind: 'branch' | 'remote' | 'tag' | 'stash';
@@ -42,7 +76,7 @@ export interface ChangedFile {
 export interface WorkingState {
   files: ChangedFile[]; branch: string | null; ahead: number; behind: number;
   operation: 'merge' | 'rebase' | 'cherry-pick' | 'revert' | null; conflicts: number;
-  head?: string | null;
+  head?: string | null; upstream?: string | null; trackingKnown?: boolean;
 }
 export interface RepositorySnapshot {
   repository: Repository; refs: GitRef[]; working: WorkingState; stashes: Stash[]; remotes: Remote[];
@@ -111,10 +145,11 @@ export interface GitAction {
   checkoutAfter?: boolean; tagType?: 'lightweight' | 'annotated'; pushAfter?: boolean;
   reinstateIndex?: boolean; recordOrigin?: boolean; ignoreDate?: boolean;
   prune?: boolean; pruneTags?: boolean; preserveMerges?: boolean;
+  cleanPreviewToken?: string;
   squashMessage?: 'default' | 'summary';
 }
 export interface ActionResult {
-  output: string; operation: string | null;
+  output: string; operation: string | null; previewToken?: string;
   sessionId?: string; status?: 'started' | 'completed';
 }
 export interface ArchiveQuery {
@@ -137,7 +172,8 @@ export interface PullRequestProvider {
 }
 export interface ToolProfile { executable: string; args: string[] }
 export interface AppSettings {
-  theme: 'dark' | 'light' | 'system'; detailPosition: 'inline' | 'bottom' | 'right';
+  theme: 'dark' | 'light' | 'system'; language: 'system' | 'en' | 'zh-CN'; detailPosition: 'inline' | 'bottom' | 'right';
+  localChangesPosition: 'middle' | 'inline';
   diffView: 'unified' | 'split'; graphStyle: 'curved' | 'angular';
   dateFormat: 'relative' | 'iso' | 'local' | 'date' | 'iso-date'; dateSource: 'author' | 'committer';
   pageSize: number; initialLoad: number; loadMore: number; order: 'topo' | 'date' | 'author-date';
@@ -175,19 +211,20 @@ export interface ReviewSession {
 }
 export interface ViewState {
   scope: HistoryScope; search: string; searchMode: string; queryMode: 'filter' | 'search';
-  order: 'topo' | 'date' | 'author-date'; scrollTop: number; selected: string | null;
-  detail?: { selection: ReviewTarget | { kind: 'working' }; path?: string; scrollTop?: number };
+  order: 'topo' | 'date' | 'author-date'; scrollTop: number; scrollLeft?: number; selected: string | null;
+  detail?: { selection: ReviewTarget | { kind: 'working' }; path?: string; scrollTop?: number; filesScrollTop?: number; filesScrollLeft?: number; fullMessage?: boolean; inlineSide?: 'above' | 'below' };
   filter?: Record<string, string>; collapsed?: string[];
 }
 export interface PersistedState {
   version: number; recent: { path: string; name: string }[]; lastRepo: string | null;
   trusted: string[]; settings: AppSettings; repoSettings: Record<string, SettingsPatch>;
-  reviews: ReviewSession[]; layout: { detailSize: number; fileSize: number };
-  views: Record<string, ViewState>;
+  reviews: ReviewSession[]; layout: { detailSize: number; fileSize: number; localWidth?: number; localListSize?: number; detailRatio?: number };
+  views: Record<string, ViewState>; directoryScope?: DirectoryScopeState | null;
 }
 export interface ConfigImport { version: number; settings: SettingsPatch; warnings: string[] }
 export interface Diagnostics {
   appVersion: string; gitVersion: string | null; gitPath: string | null; platform: string;
+  hostMode?: 'desktop' | 'browser' | 'demo';
   configDirectory?: string; warnings?: string[]; performanceEnabled?: boolean;
 }
 export interface GithubUpdateInfo {
@@ -218,10 +255,25 @@ export interface Host {
   checkForUpdates(): Promise<GithubUpdateInfo>;
   /** Opt-in in-memory native diagnostics only; absent in browser/demo hosts. */
   getPerformanceData?(clear?: boolean): Promise<NativePerformanceData>;
+  usageStatus?(): Promise<UsageStatus>;
+  usageStart?(input: UsageStart): Promise<UsageStatus>;
+  usageBoundary?(boundary: UsageBoundary): Promise<UsageStatus>;
+  usageAppend?(event: UsageEventInput): Promise<UsageStatus>;
   loadState(): Promise<PersistedState>; saveState(state: PersistedState): Promise<void>;
-  pickRepository(): Promise<string | null>; openRepository(path: string): Promise<Repository>;
+  pickRepository(purpose?: 'repository' | 'directory'): Promise<string | null>;
+  openRepository(path: string, requestId?: string, scopeRoot?: string): Promise<Repository>;
+  /** Invalidates pending activation and removes only the active repository watcher. */
+  deactivateRepository?(requestId?: string): Promise<void>;
   trustRepository(repoId: string, trusted: boolean): Promise<void>;
-  discoverRepositories(path: string, depth: number): Promise<string[]>;
+  trustState?(repoId?: string): Promise<NativeTrustState>;
+  setDirectoryTrust?(path: string, trusted: boolean): Promise<NativeTrustState>;
+  setRepositoryTrust?(repoId: string, decision: 'allow' | 'deny' | 'inherit'): Promise<NativeTrustState>;
+  windowAction?(action: 'minimize' | 'toggle-maximize' | 'close' | 'drag'): Promise<void>;
+  windowMaximized?(): Promise<boolean>;
+  discoverRepositories(path: string, depth: number, requestId?: string): Promise<RepositoryDiscovery>;
+  probeRepository?(candidate: RepositoryCandidate, scopeRoot: string, requestId: string): Promise<RepositorySummary>;
+  workingAction?(action: WorkingAction): Promise<ActionResult>;
+  workingIndex?(repoId: string, requestId: string): Promise<string>;
   snapshot(repoId: string, requestId: string): Promise<RepositorySnapshot>;
   refs(repoId: string, requestId: string): Promise<GitRef[]>;
   history(query: HistoryQuery): Promise<HistoryPage>;
@@ -259,7 +311,7 @@ export const DEFAULT_DIALOGS: DialogDefaults = {
   worktreeResetMode: 'mixed', stashIncludeUntracked: true,
 };
 export const DEFAULT_SETTINGS: AppSettings = {
-  theme: 'dark', detailPosition: 'inline', diffView: 'unified', graphStyle: 'curved',
+  theme: 'dark', language: 'system', detailPosition: 'right', localChangesPosition: 'middle', diffView: 'unified', graphStyle: 'curved',
   dateFormat: 'local', dateSource: 'author', pageSize: 300, initialLoad: 300, loadMore: 100,
   order: 'date', rowHeight: 28, fontSize: 13,
   graphColors: ['#80b8e5', '#d4a5d9', '#9bc487', '#d9b678', '#74c2bd', '#e09696', '#9caced', '#c4c787'],
@@ -282,5 +334,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
 export function defaultState(): PersistedState {
   return { version: 2, recent: [], lastRepo: null, trusted: [],
     settings: structuredClone(DEFAULT_SETTINGS), repoSettings: {}, reviews: [],
-    layout: { detailSize: 360, fileSize: 260 }, views: {} };
+    layout: { detailSize: 320, fileSize: 260, localWidth: 390, localListSize: 230, detailRatio: 0.55 }, views: {}, directoryScope: null };
 }

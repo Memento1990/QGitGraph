@@ -155,22 +155,26 @@ pub async fn open_snapshot(
         result.new_content
     }
     .ok_or_else(|| AppError::new("SNAPSHOT", "This file side does not exist."))?;
-    let directory = state
-        .profile_directory
-        .join("snapshots")
-        .join(state.next_id("file"));
-    std::fs::create_dir_all(&directory).map_err(AppError::io)?;
-    let basename = Path::new(&query.path)
-        .file_name()
-        .unwrap_or_else(|| std::ffi::OsStr::new("snapshot.txt"));
-    let path = directory.join(basename);
-    std::fs::write(&path, text).map_err(AppError::io)?;
-    let mut permissions = std::fs::metadata(&path)
-        .map_err(AppError::io)?
-        .permissions();
-    permissions.set_readonly(true);
-    std::fs::set_permissions(&path, permissions).map_err(AppError::io)?;
-    launch_editor(state, repo, &path)
+    state
+        .git
+        .with_repository_authorization(repo, &query.request_id, true, || {
+            let directory = state
+                .profile_directory
+                .join("snapshots")
+                .join(state.next_id("file"));
+            std::fs::create_dir_all(&directory).map_err(AppError::io)?;
+            let basename = Path::new(&query.path)
+                .file_name()
+                .unwrap_or_else(|| std::ffi::OsStr::new("snapshot.txt"));
+            let path = directory.join(basename);
+            std::fs::write(&path, text).map_err(AppError::io)?;
+            let mut permissions = std::fs::metadata(&path)
+                .map_err(AppError::io)?
+                .permissions();
+            permissions.set_readonly(true);
+            std::fs::set_permissions(&path, permissions).map_err(AppError::io)?;
+            launch_editor(state, repo, &path)
+        })
 }
 
 pub fn open_url(url: &str) -> Result<()> {

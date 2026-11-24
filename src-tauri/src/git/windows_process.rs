@@ -12,7 +12,7 @@ use crate::{
 };
 use std::{
     cmp::Ordering,
-    ffi::OsStr,
+    ffi::{OsStr, OsString},
     fs::File,
     io::{self, Read, Write},
     mem::{size_of, size_of_val, zeroed},
@@ -550,49 +550,83 @@ fn ordinal(left: &[u16], right: &[u16]) -> Result<Ordering> {
     }
 }
 fn environment(command: &Command) -> Result<Vec<u16>> {
-    let inherited = std::env::vars_os().map(|(key, value)| (key, Some(value)));
-    let changes = command
-        .get_envs()
-        .map(|(key, value)| (key.to_owned(), value.map(OsStr::to_owned)));
-    let mut entries: Vec<(Vec<u16>, Vec<u16>)> = Vec::new();
-    for (key, value) in inherited.chain(changes) {
-        let key = units(&key)?;
-        let drive_key = key.len() == 3
-            && key[0] == b'=' as u16
-            && (key[1] as u8).is_ascii_alphabetic()
-            && key[1] <= 127
-            && key[2] == b':' as u16;
-        if key.is_empty() || key.contains(&(b'=' as u16)) && !drive_key {
-            return Err(AppError::new(
-                "ARGUMENT",
-                "Invalid Git environment variable name.",
-            ));
-        }
+    merge_environment(
+        std::env::vars_os(),
+        command
+            .get_envs()
+            .map(|(key, value)| (key.to_owned(), value.map(OsStr::to_owned))),
+    )
+}
+
+// Keep inherited Windows pseudoentries separate from explicit settings/removals.
+// vars_os() splits entries starting with '=' at the *next* '=': both drive cwd
+// entries (=C:=...) and other shell metadata (=name=...) can be inherited. These
+// are opaque OS data, not names callers may set or remove through the builder.
+fn merge_environment(
+    inherited: impl IntoIterator<Item = (OsString, OsString)>,
+    changes: impl IntoIterator<Item = (OsString, Option<OsString>)>,
+) -> Result<Vec<u16>> {
+    let mut entries = Vec::new();
+    for (key, value) in inherited {
+        let key = environment_key(&key, true)?;
+        merge_environment_entry(&mut entries, key, Some(units(&value)?))?;
+    }
+    for (key, value) in changes {
+        // Validate removals too, before looking up the name. An inherited
+        // pseudoentry never grants permission to address it explicitly.
+        let key = environment_key(&key, false)?;
         let value = value.as_deref().map(units).transpose()?;
-        // Fallible binary insertion uses Windows' locale-independent ordinal
-        // comparison, not Unicode/ASCII lowercasing. Deletions are case-insensitive.
-        let (mut low, mut high) = (0, entries.len());
-        let mut found = false;
-        while low < high {
-            let middle = low + (high - low) / 2;
-            match ordinal(&entries[middle].0, &key)? {
-                Ordering::Less => low = middle + 1,
-                Ordering::Greater => high = middle,
-                Ordering::Equal => {
-                    low = middle;
-                    found = true;
-                    break;
-                }
-            }
-        }
-        if found {
-            entries.remove(low);
-        }
-        if let Some(value) = value {
-            entries.insert(low, (key, value));
-        }
+        merge_environment_entry(&mut entries, key, value)?;
     }
     Ok(environment_block(&entries))
+}
+
+fn environment_key(key: &OsStr, inherited: bool) -> Result<Vec<u16>> {
+    let key = units(key)?;
+    let name = if inherited && key.first() == Some(&(b'=' as u16)) {
+        &key[1..]
+    } else {
+        &key[..]
+    };
+    // Only inherited names may have one leading '='; a nonempty remainder
+    // without another '=' is necessary to serialize one unambiguous entry.
+    if name.is_empty() || name.contains(&(b'=' as u16)) {
+        return Err(AppError::new(
+            "ARGUMENT",
+            "Invalid Git environment variable name.",
+        ));
+    }
+    Ok(key)
+}
+
+fn merge_environment_entry(
+    entries: &mut Vec<(Vec<u16>, Vec<u16>)>,
+    key: Vec<u16>,
+    value: Option<Vec<u16>>,
+) -> Result<()> {
+    // Fallible binary insertion uses Windows' locale-independent ordinal
+    // comparison, not Unicode/ASCII lowercasing. Deletions are case-insensitive.
+    let (mut low, mut high) = (0, entries.len());
+    let mut found = false;
+    while low < high {
+        let middle = low + (high - low) / 2;
+        match ordinal(&entries[middle].0, &key)? {
+            Ordering::Less => low = middle + 1,
+            Ordering::Greater => high = middle,
+            Ordering::Equal => {
+                low = middle;
+                found = true;
+                break;
+            }
+        }
+    }
+    if found {
+        entries.remove(low);
+    }
+    if let Some(value) = value {
+        entries.insert(low, (key, value));
+    }
+    Ok(())
 }
 fn environment_block(entries: &[(Vec<u16>, Vec<u16>)]) -> Vec<u16> {
     let mut block = Vec::new();
@@ -630,30 +664,187 @@ mod tests {
         assert_eq!(environment_block(&[]), vec![0, 0]);
     }
     #[test]
-    fn launch_data_rejects_nul_and_overlays_ordinal_environment() {
+    fn inherited_pseudoentries_and_ordinal_overlays_form_an_exact_utf16_block() {
+        let inherited = [
+            ("z", "last"),
+            ("=QGITGRAPH_METADATA", "中文=quoted\"\\😀"),
+            ("=C:", r"C:\directory 中文"),
+            ("=c:", r"C:\replacement 中文"),
+            ("=::", "shell metadata"),
+            ("=qgitgraph_metadata", "replacement=中文😀"),
+            ("QGITGRAPH_É", "old"),
+            ("qgitgraph_é", "inherited duplicate"),
+            ("QGITGRAPH_REMOVED_É", "old"),
+            ("Empty", ""),
+        ]
+        .map(|(key, value)| (OsString::from(key), OsString::from(value)));
+        let changes = [
+            ("qgitgraph_é", Some("explicit=quoted\"\\中文😀")),
+            ("qgitgraph_removed_é", None),
+            ("not_present", None),
+            ("Added", Some("")),
+        ]
+        .map(|(key, value)| (OsString::from(key), value.map(OsString::from)));
+        let block = merge_environment(inherited, changes).unwrap();
+        let expected: Vec<_> = concat!(
+            "=::=shell metadata\0",
+            "=c:=C:\\replacement 中文\0",
+            "=qgitgraph_metadata=replacement=中文😀\0",
+            "Added=\0",
+            "Empty=\0",
+            "qgitgraph_é=explicit=quoted\"\\中文😀\0",
+            "z=last\0\0",
+        )
+        .encode_utf16()
+        .collect();
+        assert_eq!(block, expected);
+        // Pseudoentry keys use the same Windows ordinal comparison as ordinary
+        // keys, including non-ASCII folding, rather than ASCII normalization.
+        assert_eq!(
+            merge_environment(
+                [("=É", "old"), ("=é", "new")]
+                    .map(|(key, value)| (OsString::from(key), OsString::from(value))),
+                [],
+            )
+            .unwrap(),
+            "=é=new\0\0".encode_utf16().collect::<Vec<_>>()
+        );
+        assert_eq!(merge_environment([], []).unwrap(), vec![0, 0]);
+        assert_eq!(
+            merge_environment(
+                [(OsString::from("Remove"), OsString::from("value"))],
+                [(OsString::from("rEMOVE"), None)],
+            )
+            .unwrap(),
+            vec![0, 0]
+        );
+        // Windows ordinal case folding does not expand one name into another.
+        assert_ne!(
+            ordinal(
+                &"Straße".encode_utf16().collect::<Vec<_>>(),
+                &"STRASSE".encode_utf16().collect::<Vec<_>>()
+            )
+            .unwrap(),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn inherited_environment_rejects_malformed_names_and_nuls() {
+        for key in [
+            "",
+            "=",
+            "==",
+            "=name=extra",
+            "ordinary=name",
+            "bad\0name",
+            "=bad\0name",
+        ] {
+            let error = merge_environment(
+                [(OsString::from(key), OsString::from("synthetic value"))],
+                [],
+            )
+            .unwrap_err();
+            assert_eq!(error.code, "ARGUMENT", "synthetic key {key:?}");
+        }
+        for key in ["ordinary", "=C:", "=metadata"] {
+            assert_eq!(
+                merge_environment([(OsString::from(key), OsString::from("bad\0value"))], [])
+                    .unwrap_err()
+                    .code,
+                "ARGUMENT"
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_environment_settings_and_removals_never_accept_pseudonames() {
+        for key in [
+            "",
+            "=C:",
+            "=c:",
+            "=metadata",
+            "=::",
+            "=É😀",
+            "=",
+            "==",
+            "=name=extra",
+            "ordinary=name",
+            "bad\0name",
+            "=bad\0name",
+        ] {
+            for value in [Some(OsString::from("synthetic value")), None] {
+                // Even an inherited matching pseudoentry cannot be explicitly
+                // overridden or removed. The empty-inheritance case matters too.
+                for inherited in [
+                    Vec::new(),
+                    vec![
+                        (OsString::from("=C:"), OsString::from(r"C:\synthetic")),
+                        (OsString::from("=metadata"), OsString::from("opaque")),
+                    ],
+                ] {
+                    let error =
+                        merge_environment(inherited, [(OsString::from(key), value.clone())])
+                            .unwrap_err();
+                    assert_eq!(error.code, "ARGUMENT", "synthetic key {key:?}");
+                }
+            }
+        }
+        assert_eq!(
+            merge_environment(
+                [],
+                [(
+                    OsString::from("ordinary"),
+                    Some(OsString::from("bad\0value"))
+                )],
+            )
+            .unwrap_err()
+            .code,
+            "ARGUMENT"
+        );
+    }
+
+    #[test]
+    fn explicit_command_adapter_validates_both_settings_and_removals() {
+        for key in ["=C:", "=metadata", "=::", "ordinary=name", ""] {
+            for remove in [false, true] {
+                let mut command = Command::new(r"C:\trusted\git.exe");
+                if remove {
+                    command.env_remove(key);
+                } else {
+                    command.env(key, "synthetic");
+                }
+                assert_eq!(
+                    environment(&command).unwrap_err().code,
+                    "ARGUMENT",
+                    "synthetic key {key:?}, remove={remove}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn environment_preserves_non_unicode_utf16_without_lossy_conversion() {
         use std::os::windows::ffi::OsStringExt;
-        let invalid = std::ffi::OsString::from_wide(&[b'a' as u16, 0, b'b' as u16]);
-        assert_eq!(units(&invalid).unwrap_err().code, "ARGUMENT");
-        let mut command = Command::new(r"C:\trusted\git.exe");
-        command.env("QGITGRAPH_NATIVE_É", "old");
-        command.env("qgitgraph_native_é", "中文=quoted\"\\");
-        command.env("QGITGRAPH_NATIVE_REMOVED", "old");
-        command.env_remove("qgitgraph_native_removed");
-        let block = environment(&command).unwrap();
-        assert_eq!(&block[block.len() - 2..], &[0, 0]);
-        let entries: Vec<_> = block
-            .split(|&unit| unit == 0)
-            .filter(|entry| !entry.is_empty())
-            .map(|entry| String::from_utf16(entry).unwrap())
-            .collect();
-        let matches: Vec<_> = entries
-            .iter()
-            .filter(|entry| entry.to_uppercase().starts_with("QGITGRAPH_NATIVE_É="))
-            .collect();
-        assert_eq!(matches.len(), 1);
-        assert!(matches[0].ends_with("=中文=quoted\"\\"));
-        assert!(!entries.iter().any(|entry| entry
-            .to_uppercase()
-            .starts_with("QGITGRAPH_NATIVE_REMOVED=")));
+        let key = [b'=' as u16, 0xd800, b'X' as u16];
+        let value = [0xdc00, b'=' as u16, 0xd83d, 0xde00];
+        let mut expected = key.to_vec();
+        expected.push(b'=' as u16);
+        expected.extend(value);
+        expected.extend([0, 0]);
+        assert_eq!(
+            merge_environment(
+                [(OsString::from_wide(&key), OsString::from_wide(&value))],
+                [],
+            )
+            .unwrap(),
+            expected
+        );
+        assert_eq!(
+            units(&OsString::from_wide(&[b'a' as u16, 0, b'b' as u16]))
+                .unwrap_err()
+                .code,
+            "ARGUMENT"
+        );
     }
 }

@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cacheableDiff, contentRows, detailBytes, diffBytes, fileTree, FileTreeCache, fileWindow, MAX_DIFF_LINES, parsePatch, PatchModelCache, textLines } from '../src/lib/diff';
 import { formatDate, LruCache, matchesCommit } from '../src/lib/format';
+import { getLocale } from '../src/lib/i18n';
 import { StateStore } from '../src/lib/state';
 import { DEFAULT_SETTINGS, type ChangedFile, type Commit, type CommitDetail, type DiffQuery, type DiffResult, type Host, type Repository, type WorkingState } from '../src/shared/protocol';
-import { DetailsPane } from '../src/ui/details';
+import { DetailsPane, type DetailCallbacks, type DetailsOptions } from '../src/ui/details';
+import { HistoryDocuments, type HistoryFileRequest } from '../src/ui/history-documents';
 import { DiffView } from '../src/ui/diff-view';
 
 const oid = (character: string) => character.repeat(40);
@@ -20,7 +22,10 @@ class StubNode {
   children: StubNode[] = []; parent: StubNode | null = null; className = ''; dataset: Record<string, string> = {}; attributes = new Map<string, string>();
   style: Record<string, unknown> = { setProperty: (key: string, value: string) => { this.style[key] = value; } };
   id = ''; title = ''; value = ''; type = ''; checked = false; hidden = false; disabled = false; tabIndex = -1;
-  scrollTop = 0; scrollLeft = 0; clientHeight = 240; clientWidth = 1000; private text = ''; listeners = new Map<string, ((event: unknown) => void)[]>();
+  get parentElement(): StubNode | null { return this.parent; }
+  get firstElementChild(): StubNode | null { return this.children[0] ?? null; }
+  get childElementCount(): number { return this.children.length; }
+  scrollTop = 0; scrollLeft = 0; scrollHeight = 240; clientHeight = 240; clientWidth = 1000; private text = ''; listeners = new Map<string, ((event: unknown) => void)[]>();
   constructor(readonly tag = 'div') { StubNode.all.push(this); }
   classList = {
     contains: (name: string) => this.className.split(/\s+/).includes(name),
@@ -61,12 +66,12 @@ function query(root: { element: HTMLElement }, selector: string): StubNode { con
 function titled(root: StubNode, title: string): StubNode { const node = root.querySelectorAll<StubNode>('button').find(item => item.title === title); if (!node) throw new Error(`Missing button ${title}`); return node; }
 function changeMode(view: { element: HTMLElement }, value: string) { const select = query(view, 'select'); select.value = value; select.fire('change'); }
 function clickFile(pane: DetailsPane, path: string) { const row = query(pane, '.file-list').querySelectorAll<StubNode>('.file-row').find(node => node.dataset.path === path); if (!row) throw new Error(`Missing file ${path}`); row.fire('click'); }
-function harness(overrides: Partial<Host> = {}, working: WorkingState | null = null) {
+function harness(overrides: Partial<Host> = {}, working: WorkingState | null = null, options: DetailsOptions = {}, callbacks: Partial<DetailCallbacks> = {}) {
   const repo: Repository = { id: 'repo', path: 'D:/repo', name: 'repo', gitDir: '', commonDir: '', head: oid('a'), branch: 'main', trusted: false, bare: false };
   const context = { repo: repo as Repository | null, settings: structuredClone(DEFAULT_SETTINGS), working };
   const host = { cancel: vi.fn(async () => {}), commitDetail: vi.fn(async (_repo: string, id: string) => detail(id)), diffPatch: vi.fn(async () => patch()), fileContent: vi.fn(async () => ({ ...patch(), newContent: 'new file\n' })), diff: vi.fn(async () => ({ ...patch(), oldContent: 'old file\n', newContent: 'new file\n' })), ...overrides } as unknown as Host;
   const store = new StateStore(async () => {}, vi.fn()); store.queue = vi.fn();
-  const pane = new DetailsPane(host, store, { context: () => context, settings: update => { Object.assign(context.settings, update); pane.updateSettings(); }, copy: vi.fn(), action: vi.fn(), close: vi.fn(), follow: vi.fn(), error: vi.fn(), ensureTrust: async () => false, openUrl: vi.fn(), changed: vi.fn() });
+  const pane = new DetailsPane(host, store, { context: () => context, settings: update => { Object.assign(context.settings, update); pane.updateSettings(); }, copy: vi.fn(), action: vi.fn(), close: vi.fn(), follow: vi.fn(), error: vi.fn(), ensureTrust: async () => false, openUrl: vi.fn(), changed: vi.fn(), ...callbacks }, options);
   return { pane, host, store, context };
 }
 
@@ -115,7 +120,7 @@ describe('bounded diff models and tree preparation', () => {
     const item = commit(); Object.defineProperty(item, 'refs', { get: () => { throw new Error('refs read'); } }); Object.defineProperty(item, 'authoredAt', { get: () => { throw new Error('date read'); } });
     expect(matchesCommit(item, { text: 'SUBJECT', mode: 'message' })).toBe(true); expect(matchesCommit(item, { text: 'AUTHOR', mode: 'author' })).toBe(true);
     const value = Date.parse('2026-01-02T12:00:00Z') / 1000;
-    expect(formatDate(value, 'local')).toBe(new Date(value * 1000).toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }));
+    expect(formatDate(value, 'local')).toBe(new Date(value * 1000).toLocaleString(getLocale(), { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }));
   });
 });
 
@@ -232,5 +237,108 @@ describe('changed-file virtualization and diff view reuse', () => {
   it('limits large previews before materializing the rest and truthfully labels the limit', () => {
     const view = new DiffView(vi.fn(), vi.fn()), result = patch(); result.patch = `@@ -0,0 +1,${MAX_DIFF_LINES + 50} @@\n${'+x\n'.repeat(MAX_DIFF_LINES + 50)}`;
     view.set(result, structuredClone(DEFAULT_SETTINGS)); expect(query(view, '.diff-toolbar').textContent).toContain('Limited preview'); expect(query(view, '.diff-rows').children.length).toBeLessThan(40); view.destroy();
+  });
+});
+
+describe('historical details independent tree', () => {
+  it('does not load a first patch; tree arrows focus only and Enter/click opens an independent history document', async () => {
+    const openHistoryFile = vi.fn(), { pane, host } = harness({ commitDetail: vi.fn(async () => detail(oid('a'), [file('src/a.ts'), file('src/b.ts')])) }, null, { mode: 'history' }, { openHistoryFile });
+    await pane.show({ kind: 'commit', oid: oid('a') }); const list = query(pane, '.file-list');
+    expect(host.diffPatch).not.toHaveBeenCalled(); expect(pane.view?.path).toBeUndefined();
+    list.fire('keydown', { key: 'ArrowDown' }); list.fire('keydown', { key: 'ArrowDown' });
+    expect(openHistoryFile).not.toHaveBeenCalled(); expect(host.diffPatch).not.toHaveBeenCalled();
+    list.fire('keydown', { key: 'Enter' }); await tick();
+    expect(openHistoryFile).toHaveBeenCalledWith(expect.objectContaining({ path: 'src/b.ts', selection: { kind: 'commit', oid: oid('a'), parent: undefined } }));
+    clickFile(pane, 'src/a.ts'); await tick(); expect(openHistoryFile).toHaveBeenCalledTimes(2); expect(host.diffPatch).not.toHaveBeenCalled(); pane.destroy();
+  });
+  it('truly collapses descendants and restores per-repo/commit folder, message and both tree axes', async () => {
+    const openHistoryFile = vi.fn(), { pane, host } = harness({ commitDetail: vi.fn(async (_repo: string, id: string) => ({ ...detail(id, [file('src/a.ts'), file('src/nested/b.ts')]), body: 'Full long message' })) }, null, { mode: 'history' }, { openHistoryFile });
+    await pane.show({ kind: 'commit', oid: oid('a') }); const list = query(pane, '.file-list');
+    query(pane, '.history-message-toggle').fire('click'); expect(pane.view?.fullMessage).toBe(true);
+    list.querySelectorAll<StubNode>('.file-folder').find(row => row.dataset.folder === 'src')!.fire('click');
+    expect(list.querySelectorAll('.file-row')).toHaveLength(0); expect(openHistoryFile).not.toHaveBeenCalled();
+    list.scrollTop = 120; list.scrollLeft = 87; pane.setInlineSide('before');
+    await pane.show({ kind: 'commit', oid: oid('b') }); expect(pane.view?.fullMessage).toBe(false); expect(list.querySelectorAll('.file-row')).toHaveLength(2);
+    await pane.show({ kind: 'commit', oid: oid('a') });
+    expect(list.querySelectorAll('.file-row')).toHaveLength(0); expect(pane.view).toMatchObject({ filesScrollTop: 120, filesScrollLeft: 87, fullMessage: true, inlineSide: 'above', collapsed: ['src'] });
+    expect(host.commitDetail).toHaveBeenCalledTimes(2); expect(host.diffPatch).not.toHaveBeenCalled(); pane.destroy();
+  });
+  it('measures natural full message height and drives equal columns without a nested metadata scroll', async () => {
+    const heightChanged = vi.fn(), { pane, store } = harness({ commitDetail: vi.fn(async () => ({ ...detail(), body: 'Full message' })) }, null, { mode: 'history' }, { heightChanged });
+    await pane.show({ kind: 'commit', oid: oid('a') });
+    const content = query(pane, '.history-detail-info-content'); content.scrollHeight = 900;
+    query(pane, '.history-message-toggle').fire('click'); expect(pane.measure()).toBe(957); expect(pane.preferredHeight).toBe(957); expect(heightChanged).toHaveBeenLastCalledWith(957);
+    expect(query(pane, '.detail-body').style.height).toBe('920px'); expect(pane.view?.fullMessage).toBe(true);
+    content.scrollHeight = 200; query(pane, '.history-message-toggle').fire('click'); expect(pane.measure()).toBe(store.state.layout.detailSize);
+    pane.destroy();
+  });
+  it('retains legacy working-tree patch-first behavior even when the pane is configured for history', async () => {
+    const working: WorkingState = { files: [file('one.ts', { unstaged: true })], branch: 'main', ahead: 0, behind: 0, conflicts: 0, operation: null };
+    const { pane, host } = harness({}, working, { mode: 'history' }); await pane.show({ kind: 'working' });
+    expect(host.diffPatch).toHaveBeenCalledOnce(); expect(query(pane, '.diff-container').textContent).toContain('changed'); pane.destroy();
+  });
+});
+
+function documentHarness(overrides: Partial<Host> = {}, options: { maxTabs?: number; maxPathStates?: number } = {}) {
+  const { host, store, context, pane } = harness(overrides); pane.destroy();
+  const changed = vi.fn(), activateGraph = vi.fn(), documents = new HistoryDocuments(host, store, { context: () => context, settings: patch => { Object.assign(context.settings, patch); documents.updateSettings(); }, error: vi.fn(), copy: vi.fn(), ensureTrust: async () => false, openUrl: vi.fn(), activateGraph, changed }, options);
+  const request = (path = 'one.ts', id = oid('a'), files = [file('one.ts'), file('two.ts')]): HistoryFileRequest => ({ repo: context.repo!, selection: { kind: 'commit', oid: id }, files, path, subject: 'Subject' });
+  const root = { element: documents.surface };
+  return { documents, host, store, context, request, changed, activateGraph, root };
+}
+function documentAction(root: { element: HTMLElement }, action: string): StubNode {
+  const result = (root.element as unknown as StubNode).querySelectorAll<StubNode>('button').find(node => node.dataset.action === action); if (!result) throw new Error(`Missing action ${action}`); return result;
+}
+
+describe('history document controller', () => {
+  it('opens patch-first, single-flights, and loads full content only on explicit request', async () => {
+    const gate = deferred<DiffResult>(), { documents, request, host, root, changed } = documentHarness({ diffPatch: vi.fn(() => gate.promise) });
+    const first = documents.open(request()); expect(documents.activeId).not.toBeNull(); expect(changed).toHaveBeenCalled();
+    const again = documents.open(request()); expect(host.diffPatch).toHaveBeenCalledOnce(); expect(host.fileContent).not.toHaveBeenCalled();
+    gate.resolve(patch()); await first; await again; expect(root.element.textContent).toContain('changed'); expect(host.diff).not.toHaveBeenCalled();
+    changeMode(root, 'new'); await tick(); expect(host.fileContent).toHaveBeenCalledOnce(); documents.destroy();
+  });
+  it('does not fall back after patch error, and retries locally after cancellation', async () => {
+    const gate = deferred<DiffResult>(), diffPatch = vi.fn().mockRejectedValueOnce(new Error('patch failed')).mockImplementationOnce(() => gate.promise).mockResolvedValue(patch('retry'));
+    const { documents, request, host, root } = documentHarness({ diffPatch });
+    await documents.open(request()); expect(root.element.textContent).toContain('patch failed'); expect(host.diff).not.toHaveBeenCalled();
+    const pending = documents.open(request()); await tick(); titled(root.element as unknown as StubNode, 'Cancel').fire('click');
+    await documents.open(request()); expect(root.element.textContent).toContain('retry'); gate.resolve(patch('stale cancelled')); await pending;
+    expect(root.element.textContent).not.toContain('stale cancelled'); documents.destroy();
+  });
+  it('restores per-tab/path semantic state without overwriting it during renderer setup', async () => {
+    const { documents, request, root, activateGraph } = documentHarness();
+    await documents.open(request()); const first = documents.activeId!;
+    const view = (documents as unknown as { view: DiffView }).view; view.restore({ scrollTop: 17, scrollLeft: 83, showUnchanged: true }); await tick();
+    await documents.open(request('two.ts')); const second = documents.activeId!; expect(second).not.toBe(first);
+    await documents.activate(first); expect(view.getState()).toMatchObject({ scrollTop: 17, scrollLeft: 83, showUnchanged: true });
+    const toolbar = query(root, '.diff-toolbar'); expect(toolbar.parent?.classList.contains('history-document-tools')).toBe(true);
+    documents.activateGraph(); expect(documents.activeId).toBeNull(); expect(activateGraph).toHaveBeenCalledOnce(); expect(documents.surface.hidden).toBe(true);
+    await documents.activate(first); expect(view.getState().scrollLeft).toBe(83); expect(documents.size).toBe(2); documents.destroy();
+  });
+  it('navigates actual change boundaries across files, keeps tab identity, stops at ends and retains each path state', async () => {
+    const three = { ...patch(), patch: '@@ -1,3 +1,3 @@\n-a\n+A\n same\n-b\n+B\n' };
+    const { documents, request, root } = documentHarness({ diffPatch: vi.fn(async () => three) }); await documents.open(request()); const id = documents.activeId;
+    const view = (documents as unknown as { view: DiffView }).view; expect(view.changeCount).toBe(2);
+    view.navigateChange(1, 'last'); query(root, '.diff-scroll').scrollLeft = 92;
+    documentAction(root, 'next-change').fire('click'); await tick(); expect(documents.currentPath).toBe('two.ts'); expect(documents.activeId).toBe(id); expect(view.activeChange).toBe(0);
+    view.navigateChange(1, 'last'); const last = documentAction(root, 'next-change'); expect(last.disabled).toBe(true); last.fire('click'); await tick(); expect(documents.currentPath).toBe('two.ts');
+    view.navigateChange(-1, 'first'); documentAction(root, 'previous-change').fire('click'); await tick(); expect(documents.currentPath).toBe('one.ts'); expect(view.activeChange).toBe(1); expect(view.getState().scrollLeft).toBe(92);
+    documents.destroy();
+  });
+  it('rejects late patch/content after navigation and graph activation, and clears repository memory', async () => {
+    const one = deferred<DiffResult>(), side = deferred<DiffResult>(), diffPatch = vi.fn((query: DiffQuery) => query.path === 'one.ts' ? one.promise : Promise.resolve(patch('current')));
+    const { documents, request, host, root, context } = documentHarness({ diffPatch, fileContent: vi.fn(() => side.promise) });
+    const old = documents.open(request()); await documents.open(request('two.ts')); one.resolve(patch('stale')); await old;
+    expect(root.element.textContent).not.toContain('stale'); expect(root.element.textContent).toContain('current'); changeMode(root, 'new'); await tick();
+    documents.activateGraph(); side.resolve({ ...patch(), newContent: 'stale content' }); await tick(); expect(root.element.textContent).not.toContain('stale content'); expect(host.cancel).toHaveBeenCalled();
+    documents.clear(); context.repo = { ...context.repo!, id: 'other' }; await documents.open(request()); expect(documents.size).toBe(1); documents.clear(); expect(documents.size).toBe(0); expect(documents.pathStateCount).toBe(0); documents.destroy();
+  });
+  it('bounds tabs/path states and marks review only after a displayed immutable patch', async () => {
+    const { documents, request, host, store } = documentHarness({}, { maxTabs: 2, maxPathStates: 2 });
+    const key = `commit:${oid('a')}:ROOT`; store.startReview(key, 'repo', { kind: 'commit', oid: oid('a') });
+    await documents.open(request()); expect([...store.reviewed(key, 'repo')]).toEqual(['one.ts']);
+    await documents.open(request('two.ts')); await documents.open(request('one.ts', oid('b'))); expect(documents.size).toBe(2); expect(documents.pathStateCount).toBeLessThanOrEqual(2);
+    expect(host.fileContent).not.toHaveBeenCalled(); documents.clear(); expect(documents.size).toBe(0); expect(documents.pathStateCount).toBe(0); documents.destroy();
   });
 });

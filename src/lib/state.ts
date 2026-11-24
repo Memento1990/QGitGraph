@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, defaultState, type AppSettings, type PersistedState, type ReviewSession, type ReviewTarget, type SettingsPatch, type ViewState } from '../shared/protocol';
+import { DEFAULT_SETTINGS, defaultState, type AppSettings, type DirectoryScopeState, type PersistedState, type ReviewSession, type ReviewTarget, type SettingsPatch, type ViewState } from '../shared/protocol';
 import { clamp } from './format';
 import { isRecord, mergeSettingsPatches, normalizeHistoryScope, normalizeSettings, normalizeSettingsPatch } from './settings-schema';
 
@@ -58,9 +58,19 @@ function normalizeView(value: unknown, settings: AppSettings): ViewState | null 
     order: ['topo', 'date', 'author-date'].includes(String(value.order)) ? value.order as ViewState['order'] : settings.order,
     scrollTop: number(value.scrollTop, 0, 0, 1_000_000_000), selected: text(value.selected) ? value.selected : null,
   };
+  if (typeof value.scrollLeft === 'number') view.scrollLeft = number(value.scrollLeft, 0, 0, 1_000_000_000);
   if (isRecord(value.detail)) {
     const selection = isRecord(value.detail.selection) && value.detail.selection.kind === 'working' ? { kind: 'working' as const } : normalizeReviewTarget(value.detail.selection);
-    if (selection) view.detail = { selection, ...(text(value.detail.path) ? { path: value.detail.path } : {}), ...(typeof value.detail.scrollTop === 'number' ? { scrollTop: number(value.detail.scrollTop, 0, 0, 1_000_000_000) } : {}) };
+    if (selection) {
+      const detail: NonNullable<ViewState['detail']> = { selection };
+      if (text(value.detail.path)) detail.path = value.detail.path;
+      for (const key of ['scrollTop', 'filesScrollTop', 'filesScrollLeft'] as const) {
+        if (typeof value.detail[key] === 'number') detail[key] = number(value.detail[key], 0, 0, 1_000_000_000);
+      }
+      if (typeof value.detail.fullMessage === 'boolean') detail.fullMessage = value.detail.fullMessage;
+      if (value.detail.inlineSide === 'above' || value.detail.inlineSide === 'below') detail.inlineSide = value.detail.inlineSide;
+      view.detail = detail;
+    }
   }
   if (isRecord(value.filter)) {
     const filter: Record<string, string> = {};
@@ -71,6 +81,22 @@ function normalizeView(value: unknown, settings: AppSettings): ViewState | null 
   return view;
 }
 export function mergeSettings(base: AppSettings, partial?: SettingsPatch | Partial<AppSettings>): AppSettings { return normalizeSettings(partial, base); }
+export function normalizeDirectoryScope(value: unknown): DirectoryScopeState | null {
+  if (!isRecord(value) || typeof value.root !== 'string' || !value.root
+    || /[\u0000-\u001f\u007f-\u009f]/.test(value.root) || new TextEncoder().encode(value.root).length > 32768
+    || !/^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+|\/)/.test(value.root)) return null;
+  const collapsedPaths: string[] = [];
+  if (Array.isArray(value.collapsedPaths)) for (const key of value.collapsedPaths) {
+    if (typeof key !== 'string' || key.length > 32768 || /[\\:\u0000-\u001f\u007f]/.test(key)) continue;
+    try {
+      if (key && key.split('/').some(segment => !segment || ['.', '..'].includes(segment) || encodeURIComponent(decodeURIComponent(segment)) !== segment)) continue;
+    } catch { continue; }
+    if (!collapsedPaths.includes(key)) collapsedPaths.push(key);
+    if (collapsedPaths.length >= 256) break;
+  }
+  return { root: value.root, depth: Math.round(number(value.depth, 2, 0, 5)),
+    width: Math.round(number(value.width, 376, 180, 640)), collapsed: value.collapsed === true, collapsedPaths };
+}
 export function normalizeState(input: unknown, now = Date.now()): PersistedState {
   const fallback = defaultState(); const state = isRecord(input) ? input : {};
   const legacyPageSize = !(typeof state.version === 'number' && state.version >= 2);
@@ -90,12 +116,16 @@ export function normalizeState(input: unknown, now = Date.now()): PersistedState
   const seen = new Set<string>();
   const layout = isRecord(state.layout) ? state.layout : {};
   return {
-    ...fallback, version: 2, settings, repoSettings, views,
+    ...fallback, version: 2, settings, repoSettings, views, directoryScope: normalizeDirectoryScope(state.directoryScope),
     recent: recent.filter(item => { if (seen.has(item.path)) return false; seen.add(item.path); return true; }).slice(0, 30),
     lastRepo: text(state.lastRepo) ? state.lastRepo : null,
     trusted: Array.isArray(state.trusted) ? [...new Set(state.trusted.filter((path): path is string => text(path) && Boolean(path)))].slice(0, 1000) : [],
     reviews: normalizeReviews(state.reviews, now),
-    layout: { detailSize: number(layout.detailSize, 360, 140, 1200), fileSize: number(layout.fileSize, 260, 150, 700) },
+    layout: {
+      detailSize: number(layout.detailSize, 320, 140, 1200), fileSize: number(layout.fileSize, 260, 150, 700),
+      localWidth: Math.round(number(layout.localWidth, 390, 240, 960)), localListSize: Math.round(number(layout.localListSize, 230, 100, 1200)),
+      detailRatio: number(layout.detailRatio, 0.55, 0.2, 0.8),
+    },
   };
 }
 export function effectiveSettings(state: PersistedState, repoId?: string | null): AppSettings {
@@ -124,7 +154,8 @@ export class StateStore {
   /** A caller awaiting an explicit save must see failures. The next save retries the newest snapshot. */
   flush(): Promise<void> {
     clearTimeout(this.timer); this.timer = undefined;
-    const snapshot = structuredClone(this.state); const revision = this.revision;
+    // Project through the persisted schema: transient working drafts and unknown UI data never reach disk.
+    const snapshot = normalizeState(this.state); const revision = this.revision;
     const operation = this.chain.catch(() => undefined).then(async () => {
       try {
         await this.save(snapshot);

@@ -1,6 +1,8 @@
 #![recursion_limit = "256"]
 
+mod authority;
 mod commands;
+mod discovery;
 pub mod error;
 pub mod git;
 pub mod model;
@@ -9,8 +11,11 @@ mod sessions;
 pub mod settings;
 mod state;
 pub mod system;
-mod verification;
+mod trust;
 mod updates;
+pub mod usage;
+mod usage_commands;
+mod verification;
 
 use state::AppState;
 use tauri::Manager;
@@ -65,6 +70,7 @@ pub fn run() {
                 }
             }
             app.manage(AppState::new(directory.clone()));
+            app.manage(usage_commands::UsageState::new(directory.clone()));
             let config = app
                 .config()
                 .app
@@ -98,15 +104,25 @@ pub fn run() {
             commands::diagnostics,
             commands::check_for_updates,
             commands::get_performance_data,
+            usage_commands::usage_status,
+            usage_commands::usage_start,
+            usage_commands::usage_boundary,
+            usage_commands::usage_append,
             commands::load_state,
             commands::save_state,
             commands::pick_repository,
             commands::open_repository,
+            commands::probe_repository,
+            commands::deactivate_repository,
             commands::trust_repository,
+            commands::get_trust_state,
+            commands::set_directory_trust,
+            commands::set_repository_trust,
             commands::discover_repositories,
             commands::get_refs,
             commands::get_history,
             commands::get_working_state,
+            commands::get_working_index,
             commands::get_commit_detail,
             commands::compare_commits,
             commands::get_diff,
@@ -116,6 +132,7 @@ pub fn run() {
             commands::get_remotes,
             commands::get_repo_config,
             commands::git_action,
+            commands::working_action,
             commands::cancel_request,
             commands::open_terminal,
             commands::open_editor,

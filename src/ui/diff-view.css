@@ -1,0 +1,145 @@
+/* Historical mode is opt-in; legacy/working-tree diff geometry remains unchanged. */
+.historical-diff {
+  background: var(--surface);
+  --diff-code-font: 'Cascadia Mono', Consolas, 'Courier New', monospace;
+}
+.historical-diff-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 6px;
+  min-width: 0;
+  padding: 3px 7px;
+  color: var(--text);
+  background: transparent;
+  font-size: 11px;
+}
+.historical-diff-toolbar .button-group { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 1px; }
+.historical-diff-toolbar .diff-file-navigation .button,
+.historical-diff-toolbar .diff-change-navigation .button {
+  width: auto;
+  height: 24px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.historical-diff-toolbar .diff-file-navigation .button > span,
+.historical-diff-toolbar .diff-change-navigation .button > span { display: inline; }
+.historical-diff-toolbar .diff-secondary-controls {
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-left: auto;
+}
+.historical-diff-toolbar > .muted:empty { display: none; }
+.historical-diff-toolbar .button {
+  min-height: 24px;
+  padding: 2px 5px;
+  border-color: transparent;
+  background: transparent;
+  border-radius: 3px;
+}
+.historical-diff-toolbar .button.icon-button { width: 25px; height: 24px; padding: 4px; }
+.historical-diff-toolbar .button:hover:not(:disabled) { background: var(--surface-hover, var(--surface-raised)); }
+.historical-diff-toolbar .button.active,
+.historical-diff-toolbar [role='switch'][aria-checked='true'] { color: var(--accent); background: var(--selected); }
+.historical-diff-toolbar .button:disabled { opacity: .4; }
+.historical-diff-toolbar .button:focus-visible,
+.historical-diff .diff-gap-toggle:focus-visible { outline: 2px solid var(--focus, var(--accent)); outline-offset: -2px; }
+.historical-diff-toolbar select { max-width: 150px; }
+.historical-diff-toolbar .spacer { flex: 1; }
+.diff-change-counter,
+.diff-file-counter {
+  min-width: 50px;
+  padding-inline: 3px;
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.historical-diff .diff-scroll {
+  overflow-anchor: none;
+  scroll-behavior: auto;
+  scrollbar-gutter: stable;
+  background: var(--surface);
+  font-family: var(--diff-code-font);
+}
+.historical-diff .diff-line { box-sizing: border-box; }
+.historical-diff .diff-change-title {
+  color: var(--accent);
+  background: var(--hunk-bg);
+  border-block: 1px solid var(--border-subtle, var(--border));
+  font-size: .9em;
+}
+.historical-diff .diff-line.is-active-change { box-shadow: inset 2px 0 0 var(--accent); }
+.historical-diff .diff-change-title.is-active-change { box-shadow: inset 2px 0 0 var(--accent), inset 0 1px 0 var(--accent); }
+.historical-diff .diff-gap,
+.historical-diff .diff-gap-status {
+  align-items: center;
+  gap: 7px;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font: 11px/var(--diff-line-height) 'Segoe UI', 'Microsoft YaHei UI', system-ui, sans-serif;
+  user-select: none;
+}
+.historical-diff .diff-gap-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  white-space: nowrap;
+}
+.historical-diff .diff-gap-toggle:hover { background: var(--hunk-bg); color: var(--accent); }
+.historical-diff .diff-gap-toggle .icon { width: 12px; height: 12px; }
+.historical-diff .diff-context-status { padding-inline: 10px; }
+.historical-diff .diff-gap-status .button { height: var(--diff-line-height); min-height: 0; padding: 1px 3px; }
+/* Wrapped split rows use measured natural heights and a Fenwick offset index.
+   CSS and virtualization deliberately share the same minimum line-height. */
+.historical-diff .is-split .diff-content,
+.historical-diff .is-split .diff-rows { width: 100%; min-width: 100%; }
+.historical-diff .diff-line.split-line.is-wrapped {
+  height: auto;
+  min-height: var(--diff-line-height);
+  width: 100%;
+  min-width: 100%;
+  align-items: stretch;
+}
+.historical-diff .diff-side { min-width: 0; overflow: visible; }
+.historical-diff .diff-side .line-text {
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: visible;
+  padding-right: 18px;
+}
+.historical-diff .diff-side .line-number,
+.historical-diff .diff-side .line-sign { align-self: stretch; }
+.historical-diff .diff-font-probe {
+  position: absolute;
+  visibility: hidden;
+  width: max-content;
+  white-space: pre;
+  pointer-events: none;
+  font: inherit;
+}
+.historical-diff .diff-change-title,
+.historical-diff .diff-gap-status { overflow: hidden; }
+.historical-diff .diff-gap-status { min-width: 100%; width: 100%; }
+.historical-diff .diff-context-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

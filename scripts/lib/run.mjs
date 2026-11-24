@@ -162,6 +162,9 @@ export async function createRun(directory, kind) {
   };
   const testManifest = { schemaVersion: 1, runId, profileDirectory, webviewDataDirectory, git };
   await json(join(profileDirectory, 'test-manifest.json'), testManifest);
+  // Legacy suites assert English labels. This is confined to the new run-owned
+  // profile; real first runs still follow the user's system language.
+  await json(join(profileDirectory, 'state.json'), { version: 2, recent: [], lastRepo: null, trusted: [], settings: { language: 'en' }, repoSettings: {}, reviews: [], layout: { detailSize: 360, fileSize: 260 }, views: {}, directoryScope: null });
   await json(join(output, 'run-manifest.json'), manifest);
   return { output, profileDirectory, manifest, env: isolatedEnvironment(git), save: () => json(join(output, 'run-manifest.json'), manifest) };
 }

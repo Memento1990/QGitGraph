@@ -1,4 +1,8 @@
 import type { AppSettings, Commit, GitRef, HistoryScope } from '../shared/protocol';
+import { getLocale, isLocalizedMessage, localized, resolveText, type Locale, type LocalizedMessage } from './i18n';
+import { m as common } from '../i18n/common';
+import { m as scopeMessage } from '../i18n/scope';
+import { ERROR_CODES, m as errorSummary, type KnownErrorCode } from '../i18n/errors';
 
 export function shortOid(oid: string, length = 8): string { return oid.slice(0, length); }
 /** Only complete SHA-1/SHA-256 object names are immutable. Refs, abbreviations and worktree tokens are not. */
@@ -6,19 +10,39 @@ export function isImmutableOid(value: string | null | undefined): value is strin
   return typeof value === 'string' && /^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(value);
 }
 export function dateValue(value: number): Date { return new Date(Math.abs(value) < 100_000_000_000 ? value * 1000 : value); }
-const relativeTime = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
-const localDates = new Map<'date' | 'local', Intl.DateTimeFormat>();
-function localDateFormat(mode: 'date' | 'local'): Intl.DateTimeFormat {
-  let formatter = localDates.get(mode);
-  if (!formatter) { formatter = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', ...(mode === 'local' ? { hour: '2-digit', minute: '2-digit' } as const : {}) }); localDates.set(mode, formatter); }
+const relativeTimes = new Map<Locale, Intl.RelativeTimeFormat>();
+const localDates = new Map<string, Intl.DateTimeFormat>();
+const numbers = new Map<string, Intl.NumberFormat>();
+function localDateFormat(mode: 'date' | 'local' | 'full', locale: Locale): Intl.DateTimeFormat {
+  const key = `${locale}:${mode}`;
+  let formatter = localDates.get(key);
+  if (!formatter) { formatter = new Intl.DateTimeFormat(locale, { year: 'numeric', month: '2-digit', day: '2-digit', ...(mode !== 'date' ? { hour: '2-digit', minute: '2-digit', ...(mode === 'full' ? { second: '2-digit' } as const : {}) } as const : {}) }); localDates.set(key, formatter); }
   return formatter;
 }
-export function formatDate(value: number, mode: AppSettings['dateFormat'], now = Date.now()): string {
+function relativeFormat(locale: Locale): Intl.RelativeTimeFormat {
+  let formatter = relativeTimes.get(locale);
+  if (!formatter) { formatter = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }); relativeTimes.set(locale, formatter); }
+  return formatter;
+}
+export function formatNumber(value: number, options: Intl.NumberFormatOptions = {}, locale: Locale = getLocale()): string {
+  const key = `${locale}:${JSON.stringify(Object.entries(options).sort(([a], [b]) => a.localeCompare(b)))}`;
+  let formatter = numbers.get(key);
+  if (!formatter) { formatter = new Intl.NumberFormat(locale, options); if (numbers.size >= 64) numbers.delete(numbers.keys().next().value!); numbers.set(key, formatter); }
+  return formatter.format(value);
+}
+export function numberText(value: number, options?: Intl.NumberFormatOptions): LocalizedMessage { return localized(locale => formatNumber(value, options, locale)); }
+export function formatFullDate(value: number, locale: Locale = getLocale()): string {
+  const date = dateValue(value); return Number.isFinite(date.getTime()) ? localDateFormat('full', locale).format(date) : '—';
+}
+export function fullDateText(value: number): LocalizedMessage { return localized(locale => formatFullDate(value, locale)); }
+export function dateText(value: number, mode: AppSettings['dateFormat'], now?: number): LocalizedMessage { return localized(locale => formatDate(value, mode, now, locale)); }
+export function formatDate(value: number, mode: AppSettings['dateFormat'], now = Date.now(), locale: Locale = getLocale()): string {
   const date = dateValue(value);
   if (!Number.isFinite(date.getTime())) return '—';
   if (mode === 'iso') return date.toISOString().replace('T', ' ').slice(0, 19);
   if (mode === 'iso-date') return date.toISOString().slice(0, 10);
-  if (mode === 'date' || mode === 'local') return localDateFormat(mode).format(date);
+  if (mode === 'date' || mode === 'local') return localDateFormat(mode, locale).format(date);
+  const relativeTime = relativeFormat(locale);
   const seconds = Math.round((date.getTime() - now) / 1000);
   if (Math.abs(seconds) < 60) return relativeTime.format(seconds, 'second');
   if (Math.abs(seconds) < 3600) return relativeTime.format(Math.round(seconds / 60), 'minute');
@@ -30,14 +54,22 @@ export function formatDate(value: number, mode: AppSettings['dateFormat'], now =
 export function commitDate(commit: Pick<Commit, 'authoredAt' | 'committedAt'>, source: AppSettings['dateSource']): number {
   return source === 'committer' ? commit.committedAt : commit.authoredAt;
 }
-export function errorMessage(error: unknown): string {
-  if (typeof error === 'string') return error;
-  if (error instanceof Error) return error.message;
-  if (error && typeof error === 'object' && 'message' in error) {
-    return String(error.message) + ('detail' in error && error.detail ? `\n${String(error.detail)}` : '');
-  }
-  return 'The operation could not be completed.';
+/** Preserve the complete original diagnostic. Only precise machine codes select translated summaries. */
+export function errorText(error: unknown): LocalizedMessage {
+  return localized(locale => {
+    if (error && typeof error === 'object' && 'localizedMessage' in error && isLocalizedMessage(error.localizedMessage)) return resolveText(error.localizedMessage, locale);
+    let raw = '';
+    if (typeof error === 'string') raw = error;
+    else if (error && typeof error === 'object' && 'message' in error) raw = String(error.message) + ('detail' in error && error.detail ? `\n${String(error.detail)}` : '');
+    const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : '';
+    if ((ERROR_CODES as readonly string[]).includes(code)) {
+      const summary = resolveText(errorSummary(code as KnownErrorCode), locale);
+      return raw && raw !== summary ? `${summary}\n${raw}` : summary;
+    }
+    return raw || resolveText(common('operationFailed'), locale);
+  });
 }
+export function errorMessage(error: unknown): string { return resolveText(errorText(error)); }
 export function clamp(value: number, min: number, max: number): number { return Math.max(min, Math.min(max, value)); }
 
 export type SearchMode = 'all' | 'message' | 'author' | 'hash' | 'date' | 'refs';
@@ -80,14 +112,15 @@ export function matchingRefs(refs: readonly GitRef[], query: string): string[] {
   const text = query.trim().toLocaleLowerCase();
   return [...new Set(refs.filter(ref => `${ref.name} ${ref.fullName}`.toLocaleLowerCase().includes(text)).map(ref => ref.fullName))];
 }
-export function scopeLabel(scope: HistoryScope): string {
+export function scopeText(scope: HistoryScope): LocalizedMessage {
   switch (scope.kind) {
-    case 'all': return 'All branches';
-    case 'head': return 'Current branch · HEAD';
-    case 'refs': return scope.refs?.length === 1 ? scope.refs[0].replace(/^refs\/(heads|remotes|tags)\//, '') : `${scope.refs?.length ?? 0} selected refs`;
-    case 'glob': return `${scope.include?.join(', ') || '*'}${scope.exclude?.length ? ` except ${scope.exclude.join(', ')}` : ''}`;
+    case 'all': return scopeMessage('all');
+    case 'head': return scopeMessage('head');
+    case 'refs': return scope.refs?.length === 1 ? localized(() => scope.refs![0].replace(/^refs\/(heads|remotes|tags)\//, '')) : scopeMessage('selectedRefs', { count: numberText(scope.refs?.length ?? 0) });
+    case 'glob': return scope.exclude?.length ? scopeMessage('except', { include: scope.include?.join(', ') || '*', exclude: scope.exclude.join(', ') }) : localized(() => scope.include?.join(', ') || '*');
   }
 }
+export function scopeLabel(scope: HistoryScope): string { return resolveText(scopeText(scope)); }
 
 /** Conservative in-memory weight, including UTF-16 text. No repository content is persisted. */
 export function valueBytes(value: unknown): number {

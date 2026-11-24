@@ -91,11 +91,15 @@ pub struct ChangedFile {
     pub submodule: Option<SubmoduleStatus>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkingState {
     pub files: Vec<ChangedFile>,
     pub branch: Option<String>,
+    #[serde(default)]
+    pub upstream: Option<String>,
+    #[serde(default)]
+    pub tracking_known: bool,
     pub ahead: usize,
     pub behind: usize,
     pub operation: Option<String>,
@@ -216,6 +220,42 @@ pub struct GitAction {
     pub prune_tags: Option<bool>,
     pub preserve_merges: Option<bool>,
     pub squash_message: Option<String>,
+    pub clean_preview_token: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkingFileTarget {
+    pub path: String,
+    pub old_path: Option<String>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkingAction {
+    pub repo_id: String,
+    pub request_id: String,
+    pub kind: String,
+    pub files: Option<Vec<WorkingFileTarget>>,
+    pub message: Option<String>,
+    pub confirmation: Option<String>,
+    // Absent is not the same confirmation as explicitly observing unborn HEAD.
+    #[serde(default, deserialize_with = "present_nullable_head")]
+    pub expected_head: Option<Option<String>>,
+    pub expected_index: Option<String>,
+    pub pull_mode: Option<String>,
+    pub no_fast_forward: Option<bool>,
+    pub sign: Option<bool>,
+}
+
+fn present_nullable_head<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -227,6 +267,8 @@ pub struct ActionResult {
     pub session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -239,6 +281,98 @@ pub struct Diagnostics {
     pub config_directory: Option<String>,
     pub warnings: Vec<String>,
     pub performance_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DirectoryScopeState {
+    pub root: String,
+    pub depth: usize,
+    #[serde(default = "directory_scope_width")]
+    pub width: usize,
+    pub collapsed: bool,
+    pub collapsed_paths: Vec<String>,
+}
+
+fn directory_scope_width() -> usize {
+    376
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum RepositoryMarker {
+    GitDirectory,
+    GitFile,
+    Bare,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCandidate {
+    pub path: String,
+    pub components: Vec<String>,
+    pub marker: RepositoryMarker,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DiscoveryWarning {
+    pub code: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDiscovery {
+    pub root: String,
+    pub repositories: Vec<RepositoryCandidate>,
+    pub complete: bool,
+    pub limit: Option<String>,
+    pub warnings: Vec<DiscoveryWarning>,
+    pub directories: usize,
+    pub entries: usize,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum RepositoryPickerPurpose {
+    #[default]
+    Repository,
+    Directory,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum RepositoryTrustDecision {
+    Allow,
+    Deny,
+    Inherit,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrustRule {
+    pub path: String,
+    pub kind: String,
+    pub decision: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryTrust {
+    pub repo_id: String,
+    pub path: String,
+    pub trusted: bool,
+    pub source: String,
+    pub rule_path: Option<String>,
+    pub epoch: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeTrustState {
+    pub version: u32,
+    pub rules: Vec<TrustRule>,
+    pub repositories: Vec<RepositoryTrust>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -254,6 +388,8 @@ pub struct PersistedState {
     pub layout: serde_json::Value,
     #[serde(default)]
     pub views: HashMap<String, serde_json::Value>,
+    #[serde(default)]
+    pub directory_scope: Option<DirectoryScopeState>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -398,8 +534,25 @@ impl Default for PersistedState {
             settings: serde_json::json!({}),
             repo_settings: HashMap::new(),
             reviews: vec![],
-            layout: serde_json::json!({"detailSize":360,"fileSize":260}),
+            layout: serde_json::json!({"detailSize":320,"fileSize":260,"localWidth":390,"localListSize":230,"detailRatio":0.55}),
             views: HashMap::new(),
+            directory_scope: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_working_state_defaults_tracking_fields_and_always_serializes_them() {
+        let legacy = serde_json::json!({"files":[],"branch":"main","ahead":0,"behind":0,"operation":null,"conflicts":0,"head":null});
+        let state: WorkingState = serde_json::from_value(legacy).unwrap();
+        assert!(state.upstream.is_none());
+        assert!(!state.tracking_known);
+        let encoded = serde_json::to_value(&state).unwrap();
+        assert!(encoded["upstream"].is_null());
+        assert_eq!(encoded["trackingKnown"], false);
     }
 }

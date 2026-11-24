@@ -5,6 +5,7 @@ mod process;
 pub mod read;
 #[cfg(windows)]
 mod windows_process;
+mod working_actions;
 
 use crate::{
     error::{AppError, Result},
@@ -61,6 +62,29 @@ struct CachedVersion {
 }
 
 #[derive(Clone)]
+struct NativeRepository {
+    repo: Repository,
+    epoch: u64,
+    identity: Option<crate::authority::RepositoryIdentity>,
+}
+
+#[derive(Clone)]
+struct RequestBinding {
+    repository: NativeRepository,
+    token: CancellationToken,
+    requires_trust: bool,
+}
+
+#[derive(Default)]
+struct NativeAuthorization {
+    required: bool,
+    sequence: u64,
+    repositories: HashMap<String, NativeRepository>,
+    bindings: HashMap<String, RequestBinding>,
+    trust_policy: Option<Arc<crate::trust::TrustService>>,
+}
+
+#[derive(Clone)]
 pub struct GitService {
     executable: Arc<Mutex<PathBuf>>,
     tasks: Arc<Mutex<HashMap<String, CancellationToken>>>,
@@ -70,6 +94,9 @@ pub struct GitService {
     isolated_home: Option<PathBuf>,
     observers: Arc<Mutex<HashMap<String, HashSet<u32>>>>,
     version_cache: Arc<Mutex<Option<CachedVersion>>>,
+    authorization: Arc<Mutex<NativeAuthorization>>,
+    parent_authorization: Option<Arc<(GitService, String)>>,
+    clean_previews: Arc<Mutex<actions::clean::CleanStore>>,
 }
 
 #[derive(Debug)]
@@ -82,11 +109,14 @@ pub struct ProcessOutput {
 pub struct RequestGuard {
     id: String,
     tasks: Arc<Mutex<HashMap<String, CancellationToken>>>,
+    authorization: Arc<Mutex<NativeAuthorization>>,
 }
 impl Drop for RequestGuard {
     fn drop(&mut self) {
+        // 注册与释放的锁顺序一致；旧 owner 不能留下可借用的授权绑定。
         if let Ok(mut tasks) = self.tasks.lock() {
             tasks.remove(&self.id);
+            self.authorization.lock().unwrap().bindings.remove(&self.id);
         }
     }
 }
@@ -119,6 +149,9 @@ impl GitService {
             isolated_home: None,
             observers: Arc::new(Mutex::new(HashMap::new())),
             version_cache: Arc::new(Mutex::new(None)),
+            authorization: Arc::new(Mutex::new(NativeAuthorization::default())),
+            parent_authorization: None,
+            clean_previews: Arc::new(Mutex::new(actions::clean::CleanStore::default())),
         }
     }
     pub fn isolated(path: Option<PathBuf>, home: PathBuf) -> Self {
@@ -126,6 +159,244 @@ impl GitService {
         service.isolated_home = Some(home);
         service
     }
+
+    pub(super) fn nested_probe_service(&self, request_id: &str) -> Result<GitService> {
+        self.check_request(request_id)?;
+        let mut service = self.clone();
+        service.authorization = Arc::new(Mutex::new(NativeAuthorization::default()));
+        service.parent_authorization = Some(Arc::new((self.clone(), request_id.to_owned())));
+        Ok(service)
+    }
+
+    pub(super) fn nested_read_service(
+        &self,
+        repo: &Repository,
+        request_id: &str,
+    ) -> Result<GitService> {
+        let service = self.nested_probe_service(request_id)?;
+        service.require_native_authorization();
+        let identity = crate::authority::RepositoryIdentity::capture(repo)?.0;
+        service.publish_native_repository(repo, Some(identity));
+        service.bind_repository_request(repo, request_id, false)?;
+        Ok(service)
+    }
+
+    pub(crate) fn require_native_authorization(&self) {
+        self.authorization.lock().unwrap().required = true;
+    }
+
+    pub(crate) fn set_trust_policy(&self, policy: Arc<crate::trust::TrustService>) {
+        self.authorization.lock().unwrap().trust_policy = Some(policy);
+    }
+
+    pub(crate) fn publish_native_repository(
+        &self,
+        repo: &Repository,
+        identity: Option<crate::authority::RepositoryIdentity>,
+    ) -> u64 {
+        let mut authorization = self.authorization.lock().unwrap();
+        authorization.required = true;
+        if let Some(previous) = authorization.repositories.get(&repo.id) {
+            if same_repository(&previous.repo, repo)
+                && previous.repo.trusted == repo.trusted
+                && previous.identity == identity
+            {
+                return previous.epoch;
+            }
+        }
+        self.invalidate_clean_repository(&repo.id);
+        authorization.sequence += 1;
+        let epoch = authorization.sequence;
+        // 只取消该仓库旧 epoch 的请求，不取消共享 common-dir 的其他 worktree。
+        for binding in authorization.bindings.values() {
+            if binding.repository.repo.id == repo.id {
+                binding.token.cancel();
+            }
+        }
+        authorization.repositories.insert(
+            repo.id.clone(),
+            NativeRepository {
+                repo: repo.clone(),
+                epoch,
+                identity,
+            },
+        );
+        epoch
+    }
+
+    pub(crate) fn validate_native_repository_identity(&self, repo: &Repository) -> Result<()> {
+        let current = self
+            .authorization
+            .lock()
+            .unwrap()
+            .repositories
+            .get(&repo.id)
+            .cloned()
+            .ok_or_else(authorization_error)?;
+        if !same_repository(&current.repo, repo) {
+            return Err(authorization_error());
+        }
+        current
+            .identity
+            .ok_or_else(authorization_error)?
+            .validate(repo)?;
+        Ok(())
+    }
+
+    pub(crate) fn native_repositories(&self) -> Vec<Repository> {
+        self.authorization
+            .lock()
+            .unwrap()
+            .repositories
+            .values()
+            .map(|entry| entry.repo.clone())
+            .collect()
+    }
+
+    pub(crate) fn native_epoch(&self, repo_id: &str) -> u64 {
+        self.authorization
+            .lock()
+            .unwrap()
+            .repositories
+            .get(repo_id)
+            .map_or(0, |repo| repo.epoch)
+    }
+
+    pub(crate) fn bind_repository_request(
+        &self,
+        repo: &Repository,
+        request_id: &str,
+        requires_trust: bool,
+    ) -> Result<()> {
+        self.check_request(request_id)?;
+        let tasks = self.tasks.lock().unwrap();
+        let token = tasks
+            .get(request_id)
+            .ok_or_else(|| AppError::new("REQUEST", "The request has not been registered."))?;
+        if token.is_cancelled() {
+            return Err(cancelled_error());
+        }
+        let mut authorization = self.authorization.lock().unwrap();
+        if let Some(binding) = authorization.bindings.get_mut(request_id) {
+            if !same_repository(&binding.repository.repo, repo)
+                || binding.repository.repo.trusted != repo.trusted
+            {
+                return Err(authorization_error());
+            }
+            binding.requires_trust |= requires_trust;
+            return validate_binding(&authorization, request_id);
+        }
+        let Some(current) = authorization.repositories.get(&repo.id).cloned() else {
+            // 独立 Rust GitService 测试仍可显式传可信 fixture；正式 AppState
+            // 从创建起强制原生发布，renderer JSON 无法构造 authority。
+            if authorization.required && (requires_trust || repo.trusted || !repo.id.is_empty()) {
+                return Err(authorization_error());
+            }
+            if requires_trust && !repo.trusted {
+                return Err(untrusted_error());
+            }
+            return Ok(());
+        };
+        if !same_repository(&current.repo, repo) || current.repo.trusted != repo.trusted {
+            return Err(authorization_error());
+        }
+        if authorization.required && current.identity.is_none() {
+            return Err(authorization_error());
+        }
+        if requires_trust && !current.repo.trusted {
+            return Err(untrusted_error());
+        }
+        authorization.bindings.insert(
+            request_id.to_owned(),
+            RequestBinding {
+                repository: current,
+                token: token.clone(),
+                requires_trust,
+            },
+        );
+        Ok(())
+    }
+
+    pub(crate) fn check_repository_authorization(
+        &self,
+        repo: &Repository,
+        request_id: &str,
+        requires_trust: bool,
+    ) -> Result<()> {
+        self.bind_repository_request(repo, request_id, requires_trust)?;
+        self.check_request(request_id)
+    }
+
+    pub(crate) fn with_repository_authorization<T>(
+        &self,
+        repo: &Repository,
+        request_id: &str,
+        requires_trust: bool,
+        operation: impl FnOnce() -> Result<T>,
+    ) -> Result<T> {
+        self.check_repository_authorization(repo, request_id, requires_trust)?;
+        if let Some(parent) = &self.parent_authorization {
+            return parent.0.with_parent_authorization(&parent.1, || {
+                self.with_local_repository_authorization(repo, request_id, operation)
+            });
+        }
+        self.with_local_repository_authorization(repo, request_id, operation)
+    }
+
+    fn with_parent_authorization<T>(
+        &self,
+        request_id: &str,
+        operation: impl FnOnce() -> Result<T>,
+    ) -> Result<T> {
+        self.check_request(request_id)?;
+        let authorization = self.authorization.lock().unwrap();
+        validate_binding(&authorization, request_id)?;
+        operation()
+    }
+
+    fn with_local_repository_authorization<T>(
+        &self,
+        repo: &Repository,
+        request_id: &str,
+        operation: impl FnOnce() -> Result<T>,
+    ) -> Result<T> {
+        let binding = self
+            .authorization
+            .lock()
+            .unwrap()
+            .bindings
+            .get(request_id)
+            .cloned();
+        // 句柄保持到 spawn 完成（进程路径另持有到收集结束），epoch 锁封住
+        // 最后一次复核与启动之间的撤销窗口，已启动外部 console 不强杀。
+        let _pins = binding
+            .as_ref()
+            .and_then(|binding| binding.repository.identity.as_ref())
+            .map(|identity| identity.validate(repo))
+            .transpose()?;
+        let authorization = self.authorization.lock().unwrap();
+        validate_binding(&authorization, request_id)?;
+        operation()
+    }
+
+    fn repository_pins(
+        &self,
+        repo: &Repository,
+        request_id: &str,
+    ) -> Result<Option<crate::authority::RepositoryPins>> {
+        let binding = self
+            .authorization
+            .lock()
+            .unwrap()
+            .bindings
+            .get(request_id)
+            .cloned();
+        binding
+            .and_then(|binding| binding.repository.identity)
+            .map(|identity| identity.validate(repo))
+            .transpose()
+    }
+
     pub fn git_path(&self) -> PathBuf {
         self.executable.lock().unwrap().clone()
     }
@@ -271,6 +542,7 @@ impl GitService {
             Some(RequestGuard {
                 id: request_id.to_owned(),
                 tasks: self.tasks.clone(),
+                authorization: self.authorization.clone(),
             }),
         ))
     }
@@ -278,6 +550,7 @@ impl GitService {
         if valid_request(request_id).is_err() {
             return;
         }
+        self.invalidate_clean_request(request_id);
         let tasks = self.tasks.lock().unwrap();
         if let Some(token) = tasks.get(request_id) {
             token.cancel();
@@ -304,13 +577,26 @@ impl GitService {
     }
     pub fn check_request(&self, request_id: &str) -> Result<()> {
         valid_request(request_id)?;
-        if self.request_cancelled(request_id) {
-            Err(cancelled_error())
-        } else {
-            Ok(())
+        if let Some(parent) = &self.parent_authorization {
+            parent.0.check_request(&parent.1)?;
         }
+        if self.request_cancelled(request_id) {
+            return Err(cancelled_error());
+        }
+        let binding = {
+            let authorization = self.authorization.lock().unwrap();
+            validate_binding(&authorization, request_id)?;
+            authorization.bindings.get(request_id).cloned()
+        };
+        if let Some(binding) = binding {
+            if let Some(identity) = &binding.repository.identity {
+                identity.validate(&binding.repository.repo)?;
+            }
+        }
+        Ok(())
     }
     pub fn cancel_all(&self) {
+        self.invalidate_all_clean_previews();
         for token in self.tasks.lock().unwrap().values() {
             token.cancel();
         }
@@ -328,10 +614,12 @@ impl GitService {
             .cloned()
             .ok_or_else(|| AppError::new("REQUEST", "The request has not been registered."))?;
         let mutex = self.transaction_mutex(repo_id);
-        tokio::select! { biased;
-            _ = token.cancelled() => Err(cancelled_error()),
-            guard = mutex.lock_owned() => if token.is_cancelled() { Err(cancelled_error()) } else { Ok(guard) },
-        }
+        let guard = tokio::select! { biased;
+            _ = token.cancelled() => return Err(cancelled_error()),
+            guard = mutex.lock_owned() => guard,
+        };
+        self.check_request(request_id)?;
+        Ok(guard)
     }
     fn transaction_mutex(&self, repo_id: &str) -> Arc<tokio::sync::Mutex<()>> {
         self.transactions
@@ -349,7 +637,10 @@ impl GitService {
         repo: &Repository,
         request_id: &str,
     ) -> Result<OwnedMutexGuard<()>> {
-        self.transaction_for(&repo.common_dir, request_id).await
+        self.bind_repository_request(repo, request_id, false)?;
+        let guard = self.transaction_for(&repo.common_dir, request_id).await?;
+        self.check_repository_authorization(repo, request_id, false)?;
+        Ok(guard)
     }
     pub async fn run(
         &self,
@@ -431,6 +722,7 @@ impl GitService {
             ));
         }
         let (token, _guard) = self.register_request(request_id, true)?;
+        self.bind_repository_request(repo, request_id, write)?;
         let mut queue_span = Span::begin(request_id, "queue", verb);
         let _permit = tokio::select! { biased;
             _ = token.cancelled() => { queue_span.outcome("cancelled"); total_span.outcome("cancelled"); return Err(cancelled_error()); },
@@ -442,6 +734,8 @@ impl GitService {
             total_span.outcome("cancelled");
             return Err(cancelled_error());
         }
+        self.check_repository_authorization(repo, request_id, write)?;
+        let _repository_pins = self.repository_pins(repo, request_id)?;
         if args.iter().any(|a| a.contains('\0')) {
             return Err(AppError::new(
                 "ARGUMENT",
@@ -455,12 +749,14 @@ impl GitService {
         }
         #[cfg(windows)]
         {
-            let child = windows_process::NativeChild::spawn(
-                command.as_std(),
-                input.is_some(),
-                request_id,
-                verb,
-            )?;
+            let child = self.with_repository_authorization(repo, request_id, write, || {
+                windows_process::NativeChild::spawn(
+                    command.as_std(),
+                    input.is_some(),
+                    request_id,
+                    verb,
+                )
+            })?;
             let pid = child.pid;
             self.observers
                 .lock()
@@ -515,11 +811,13 @@ impl GitService {
                 return Err(cancelled_error());
             }
             let mut spawn_span = Span::begin(request_id, "spawn", verb);
-            let mut child = command.spawn().map_err(|e| {
-                AppError::new(
-                    "GIT_UNAVAILABLE",
-                    format!("Could not start Git at {}: {e}", executable.display()),
-                )
+            let mut child = self.with_repository_authorization(repo, request_id, write, || {
+                command.spawn().map_err(|e| {
+                    AppError::new(
+                        "GIT_UNAVAILABLE",
+                        format!("Could not start Git at {}: {e}", executable.display()),
+                    )
+                })
             })?;
             spawn_span.complete();
             drop(spawn_span);
@@ -657,6 +955,57 @@ impl GitService {
         command.creation_flags(0x08000000 | 0x00000004);
         command
     }
+}
+
+fn same_repository(left: &Repository, right: &Repository) -> bool {
+    left.id == right.id
+        && left.path == right.path
+        && left.git_dir == right.git_dir
+        && left.common_dir == right.common_dir
+        && left.bare == right.bare
+}
+
+fn authorization_error() -> AppError {
+    AppError::new("AUTHORIZATION_CHANGED", "Native repository authorization changed or the request belongs to a different repository. Reopen and review trust before retrying. Writes are not rolled back.")
+}
+
+fn untrusted_error() -> AppError {
+    AppError::new(
+        "UNTRUSTED",
+        "Trust this repository before running Git write operations, hooks or remote helpers.",
+    )
+}
+
+fn validate_binding(authorization: &NativeAuthorization, request_id: &str) -> Result<()> {
+    let Some(binding) = authorization.bindings.get(request_id) else {
+        return Ok(());
+    };
+    if binding.token.is_cancelled() {
+        return Err(cancelled_error());
+    }
+    let current = authorization
+        .repositories
+        .get(&binding.repository.repo.id)
+        .ok_or_else(authorization_error)?;
+    if current.epoch != binding.repository.epoch
+        || !same_repository(&current.repo, &binding.repository.repo)
+        || current.repo.trusted != binding.repository.repo.trusted
+    {
+        return Err(authorization_error());
+    }
+    if binding.requires_trust && !current.repo.trusted {
+        return Err(untrusted_error());
+    }
+    if current.repo.trusted
+        && authorization
+            .trust_policy
+            .as_ref()
+            .is_some_and(|policy| !policy.decision(&current.repo).0)
+    {
+        binding.token.cancel();
+        return Err(authorization_error());
+    }
+    Ok(())
 }
 
 pub(crate) fn supported_git(version: &str) -> bool {
@@ -956,6 +1305,644 @@ mod tests {
         service.set_git_path(other.to_str().unwrap()).unwrap();
         assert!(service.version_cache.lock().unwrap().is_none());
     }
+    async fn native_fixture() -> (tempfile::TempDir, GitService, Repository) {
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path().join("home");
+        let root = directory.path().join("repository 中文 with spaces");
+        std::fs::create_dir(&home).unwrap();
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(home.join(".gitconfig"), b"").unwrap();
+        let service = GitService::isolated(None, home);
+        let path = crate::state::display_path(&std::fs::canonicalize(&root).unwrap());
+        let repo = Repository {
+            id: path.clone(),
+            path: path.clone(),
+            name: "Native authorization fixture".into(),
+            git_dir: Path::new(&path).join(".git").to_string_lossy().into_owned(),
+            common_dir: Path::new(&path).join(".git").to_string_lossy().into_owned(),
+            head: None,
+            branch: Some("main".into()),
+            trusted: true,
+            bare: false,
+        };
+        for args in [
+            vec!["init", "--quiet", "--initial-branch=main", "--template="],
+            vec![
+                "-c",
+                "user.name=Native Fixture",
+                "-c",
+                "user.email=native@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "--quiet",
+                "--allow-empty",
+                "--message=fixture",
+            ],
+        ] {
+            service
+                .run(
+                    &repo,
+                    "prepare-native-fixture",
+                    crate::state::args(&args),
+                    true,
+                )
+                .await
+                .unwrap();
+        }
+        (directory, service, repo)
+    }
+
+    fn publish(service: &GitService, repo: &Repository) -> u64 {
+        service.publish_native_repository(
+            repo,
+            Some(
+                crate::authority::RepositoryIdentity::capture(repo)
+                    .unwrap()
+                    .0,
+            ),
+        )
+    }
+
+    #[tokio::test]
+    async fn native_binding_rejects_json_authority_and_repo_or_common_directory_substitution() {
+        let (_fixture, service, repo) = native_fixture().await;
+        service.require_native_authorization();
+        let json = serde_json::json!({"id":repo.id,"path":repo.path,"name":"forged", "gitDir":repo.git_dir,"commonDir":repo.common_dir,"head":null,"branch":null,"trusted":true,"bare":false,"epoch":999999});
+        let forged: Repository = serde_json::from_value(json).unwrap();
+        assert_eq!(
+            service
+                .run(
+                    &forged,
+                    "json-authority",
+                    crate::state::args(&["update-ref", "refs/heads/forged", "HEAD"]),
+                    true
+                )
+                .await
+                .unwrap_err()
+                .code,
+            "AUTHORIZATION_CHANGED"
+        );
+        publish(&service, &repo);
+        let _owner = service.begin_request("repo-bound").unwrap();
+        service
+            .bind_repository_request(&repo, "repo-bound", true)
+            .unwrap();
+        let mut wrong_common = repo.clone();
+        wrong_common.common_dir = repo.path.clone();
+        let mut wrong_repo = repo.clone();
+        wrong_repo.id.push_str("-other");
+        let mut wrong_git = repo.clone();
+        wrong_git.git_dir = repo.path.clone();
+        for replacement in [wrong_common, wrong_repo, wrong_git] {
+            assert_eq!(
+                service
+                    .run(
+                        &replacement,
+                        "repo-bound",
+                        crate::state::args(&["update-ref", "refs/heads/forged", "HEAD"]),
+                        true
+                    )
+                    .await
+                    .unwrap_err()
+                    .code,
+                "AUTHORIZATION_CHANGED"
+            );
+            assert!(service.active_processes("repo-bound").is_empty());
+        }
+        assert!(!Path::new(&repo.git_dir).join("refs/heads/forged").exists());
+    }
+
+    #[tokio::test]
+    async fn native_revoke_stops_transaction_queue_and_regrant_never_revives_old_request() {
+        let (_fixture, service, repo) = native_fixture().await;
+        let epoch = publish(&service, &repo);
+        let _owner = service.begin_request("queued-native-transaction").unwrap();
+        service
+            .bind_repository_request(&repo, "queued-native-transaction", true)
+            .unwrap();
+        let blocker = service.transaction(&repo.common_dir).await;
+        let queued = service.repository_transaction(&repo, "queued-native-transaction");
+        tokio::pin!(queued);
+        tokio::select! {
+            _ = &mut queued => panic!("transaction must still be queued"),
+            _ = tokio::time::sleep(Duration::from_millis(25)) => {},
+        }
+        let mut revoked = repo.clone();
+        revoked.trusted = false;
+        assert!(publish(&service, &revoked) > epoch);
+        assert!(publish(&service, &repo) > epoch);
+        drop(blocker);
+        assert_eq!(queued.await.err().unwrap().code, "CANCELLED");
+        assert!(service
+            .active_processes("queued-native-transaction")
+            .is_empty());
+        assert_eq!(
+            service
+                .run(
+                    &repo,
+                    "queued-native-transaction",
+                    crate::state::args(&["update-ref", "refs/heads/late", "HEAD"]),
+                    true
+                )
+                .await
+                .unwrap_err()
+                .code,
+            "CANCELLED"
+        );
+        assert!(!Path::new(&repo.git_dir).join("refs/heads/late").exists());
+        service
+            .run(
+                &repo,
+                "new-native-epoch",
+                crate::state::args(&["update-ref", "refs/heads/new-epoch", "HEAD"]),
+                true,
+            )
+            .await
+            .unwrap();
+        assert!(Path::new(&repo.git_dir)
+            .join("refs/heads/new-epoch")
+            .exists());
+    }
+
+    #[tokio::test]
+    async fn native_revoke_stops_process_slot_queue_and_later_steps_without_rollback() {
+        let (_fixture, service, repo) = native_fixture().await;
+        publish(&service, &repo);
+        let _owner = service.begin_request("native-multi-step").unwrap();
+        service
+            .bind_repository_request(&repo, "native-multi-step", true)
+            .unwrap();
+        service
+            .run(
+                &repo,
+                "native-multi-step",
+                crate::state::args(&["update-ref", "refs/heads/first-step", "HEAD"]),
+                true,
+            )
+            .await
+            .unwrap();
+        let slots = service.slots.clone().acquire_many_owned(6).await.unwrap();
+        let queued = service.run(
+            &repo,
+            "native-multi-step",
+            crate::state::args(&["update-ref", "refs/heads/second-step", "HEAD"]),
+            true,
+        );
+        tokio::pin!(queued);
+        tokio::select! {
+            _ = &mut queued => panic!("child must wait for a process slot"),
+            _ = tokio::time::sleep(Duration::from_millis(25)) => {},
+        }
+        let mut revoked = repo.clone();
+        revoked.trusted = false;
+        publish(&service, &revoked);
+        publish(&service, &repo);
+        drop(slots);
+        assert_eq!(queued.await.unwrap_err().code, "CANCELLED");
+        assert!(Path::new(&repo.git_dir)
+            .join("refs/heads/first-step")
+            .exists());
+        assert!(!Path::new(&repo.git_dir)
+            .join("refs/heads/second-step")
+            .exists());
+        assert!(service.active_processes("native-multi-step").is_empty());
+    }
+
+    #[tokio::test]
+    async fn native_revoke_cancels_only_bound_repo_not_sibling_worktree_with_same_common_dir() {
+        let (fixture, service, repo) = native_fixture().await;
+        let linked_path = fixture.path().join("linked worktree");
+        service
+            .run(
+                &repo,
+                "prepare-native-linked",
+                vec![
+                    "worktree".into(),
+                    "add".into(),
+                    "--quiet".into(),
+                    "-b".into(),
+                    "linked".into(),
+                    linked_path.to_string_lossy().into_owned(),
+                ],
+                true,
+            )
+            .await
+            .unwrap();
+        let mut linked = repo.clone();
+        linked.path = crate::state::display_path(&std::fs::canonicalize(&linked_path).unwrap());
+        linked.id = linked.path.clone();
+        let output = service
+            .run(
+                &linked,
+                "discover-native-linked",
+                crate::state::args(&[
+                    "rev-parse",
+                    "--path-format=absolute",
+                    "--absolute-git-dir",
+                    "--git-common-dir",
+                ]),
+                false,
+            )
+            .await
+            .unwrap();
+        let directories: Vec<_> = output.lines().collect();
+        linked.git_dir = directories[0].into();
+        linked.common_dir = directories[1].into();
+        assert_eq!(
+            std::fs::canonicalize(&linked.common_dir).unwrap(),
+            std::fs::canonicalize(&repo.common_dir).unwrap()
+        );
+        publish(&service, &repo);
+        publish(&service, &linked);
+        let _first = service.begin_request("revoke-first-worktree").unwrap();
+        let _second = service.begin_request("preserve-linked-worktree").unwrap();
+        service
+            .bind_repository_request(&repo, "revoke-first-worktree", true)
+            .unwrap();
+        service
+            .bind_repository_request(&linked, "preserve-linked-worktree", true)
+            .unwrap();
+        let mut revoked = repo.clone();
+        revoked.trusted = false;
+        publish(&service, &revoked);
+        assert!(service.request_cancelled("revoke-first-worktree"));
+        assert!(!service.request_cancelled("preserve-linked-worktree"));
+        service.check_request("preserve-linked-worktree").unwrap();
+        service
+            .run(
+                &linked,
+                "preserve-linked-worktree",
+                crate::state::args(&["update-ref", "refs/heads/linked-still-authorized", "HEAD"]),
+                true,
+            )
+            .await
+            .unwrap();
+        assert!(Path::new(&repo.git_dir)
+            .join("refs/heads/linked-still-authorized")
+            .exists());
+    }
+
+    #[tokio::test]
+    async fn native_identity_recheck_rejects_replaced_administration_before_next_child() {
+        let (_fixture, service, repo) = native_fixture().await;
+        publish(&service, &repo);
+        let _owner = service.begin_request("native-identity-recheck").unwrap();
+        service
+            .bind_repository_request(&repo, "native-identity-recheck", true)
+            .unwrap();
+        let original = Path::new(&repo.path).join("original-git");
+        std::fs::rename(&repo.git_dir, &original).unwrap();
+        std::fs::create_dir(&repo.git_dir).unwrap();
+        assert_eq!(
+            service
+                .run(
+                    &repo,
+                    "native-identity-recheck",
+                    crate::state::args(&["update-ref", "refs/heads/replaced", "HEAD"]),
+                    true
+                )
+                .await
+                .unwrap_err()
+                .code,
+            "AUTHORIZATION_CHANGED"
+        );
+        assert!(service
+            .active_processes("native-identity-recheck")
+            .is_empty());
+        std::fs::remove_dir(&repo.git_dir).unwrap();
+        std::fs::rename(original, &repo.git_dir).unwrap();
+    }
+
+    async fn wait_for_native_marker(path: &Path) {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !path.exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("Git fixture must enter the gated phase");
+    }
+
+    fn native_hook(repo: &Repository, name: &str, script: &str) {
+        let path = Path::new(&repo.git_dir).join("hooks").join(name);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, script).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn native_revoke_terminates_only_its_running_managed_child_and_preserves_other_requests()
+    {
+        let (_fixture, service, repo) = native_fixture().await;
+        let ready = Path::new(&repo.path).join("managed-ready");
+        native_hook(&repo, "pre-commit", "#!/bin/sh\nprintf ready > managed-ready\nwhile ! test -f managed-release; do sleep 0.02; done\n");
+        publish(&service, &repo);
+        let _owner = service.begin_request("native-running-child").unwrap();
+        service
+            .bind_repository_request(&repo, "native-running-child", true)
+            .unwrap();
+        let independent = service.begin_request("native-unrelated-request").unwrap();
+        let running_service = service.clone();
+        let running_repo = repo.clone();
+        let running = tokio::spawn(async move {
+            running_service
+                .run(
+                    &running_repo,
+                    "native-running-child",
+                    crate::state::args(&[
+                        "-c",
+                        "user.name=Native Fixture",
+                        "-c",
+                        "user.email=native@example.invalid",
+                        "-c",
+                        "commit.gpgsign=false",
+                        "commit",
+                        "--quiet",
+                        "--allow-empty",
+                        "--message=must stop",
+                    ]),
+                    true,
+                )
+                .await
+        });
+        wait_for_native_marker(&ready).await;
+        assert!(!service.active_processes("native-running-child").is_empty());
+        let mut revoked = repo.clone();
+        revoked.trusted = false;
+        publish(&service, &revoked);
+        let error = tokio::time::timeout(Duration::from_secs(5), running)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.code, "CANCELLED");
+        assert!(service.active_processes("native-running-child").is_empty());
+        assert!(!service.request_cancelled("native-unrelated-request"));
+        std::fs::write(Path::new(&repo.path).join("managed-release"), b"release").unwrap();
+        drop(independent);
+    }
+
+    #[tokio::test]
+    async fn native_sync_revoke_after_pull_hook_never_starts_push_and_keeps_integrated_head() {
+        let (fixture, service, repo) = native_fixture().await;
+        let remote_path = fixture.path().join("remote.git");
+        std::fs::create_dir(&remote_path).unwrap();
+        let mut remote = repo.clone();
+        remote.path = remote_path.to_string_lossy().into_owned();
+        service
+            .run(
+                &remote,
+                "native-sync-remote-init",
+                crate::state::args(&[
+                    "init",
+                    "--quiet",
+                    "--bare",
+                    "--initial-branch=main",
+                    "--template=",
+                ]),
+                true,
+            )
+            .await
+            .unwrap();
+        for args in [
+            vec![
+                "remote".into(),
+                "add".into(),
+                "origin".into(),
+                remote.path.clone(),
+            ],
+            crate::state::args(&[
+                "-c",
+                "protocol.file.allow=always",
+                "push",
+                "--quiet",
+                "--set-upstream",
+                "origin",
+                "main",
+            ]),
+            crate::state::args(&["config", "user.name", "Native Fixture"]),
+            crate::state::args(&["config", "user.email", "native@example.invalid"]),
+            crate::state::args(&["config", "commit.gpgsign", "false"]),
+        ] {
+            service
+                .run(&repo, "native-sync-prepare", args, true)
+                .await
+                .unwrap();
+        }
+        let original = service
+            .run(
+                &repo,
+                "native-sync-original-head",
+                crate::state::args(&["rev-parse", "HEAD"]),
+                false,
+            )
+            .await
+            .unwrap();
+        std::fs::write(Path::new(&repo.path).join("incoming.txt"), b"incoming\n").unwrap();
+        for args in [
+            crate::state::args(&["add", "--", "incoming.txt"]),
+            crate::state::args(&["commit", "--quiet", "--message=incoming"]),
+            crate::state::args(&[
+                "-c",
+                "protocol.file.allow=always",
+                "push",
+                "--quiet",
+                "origin",
+                "main",
+            ]),
+        ] {
+            service
+                .run(&repo, "native-sync-incoming", args, true)
+                .await
+                .unwrap();
+        }
+        let incoming = service
+            .run(
+                &repo,
+                "native-sync-incoming-head",
+                crate::state::args(&["rev-parse", "HEAD"]),
+                false,
+            )
+            .await
+            .unwrap();
+        service
+            .run(
+                &repo,
+                "native-sync-reset-local",
+                vec!["reset".into(), "--hard".into(), original.trim().into()],
+                true,
+            )
+            .await
+            .unwrap();
+        let ready = fixture.path().join("sync-pull-ready");
+        let release = fixture.path().join("sync-pull-release");
+        let pushed = fixture.path().join("sync-push-started");
+        let shell_path = |path: &Path| path.to_string_lossy().replace('\\', "/");
+        native_hook(
+            &repo,
+            "post-merge",
+            &format!(
+                "#!/bin/sh\nprintf ready > '{}'\nwhile ! test -f '{}'; do sleep 0.02; done\n",
+                shell_path(&ready),
+                shell_path(&release)
+            ),
+        );
+        native_hook(
+            &repo,
+            "pre-push",
+            &format!("#!/bin/sh\nprintf forbidden > '{}'\n", shell_path(&pushed)),
+        );
+        publish(&service, &repo);
+        let _owner = service.begin_request("native-real-sync").unwrap();
+        service
+            .bind_repository_request(&repo, "native-real-sync", true)
+            .unwrap();
+        let action = serde_json::from_value(serde_json::json!({"repoId":repo.id,"requestId":"native-real-sync","kind":"sync","pullMode":"ff-only"})).unwrap();
+        let sync_service = service.clone();
+        let sync_repo = repo.clone();
+        let sync =
+            tokio::spawn(async move { sync_service.working_action(&sync_repo, action).await });
+        wait_for_native_marker(&ready).await;
+        let mut revoked = repo.clone();
+        revoked.trusted = false;
+        publish(&service, &revoked);
+        let error = tokio::time::timeout(Duration::from_secs(5), sync)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.code, "CANCELLED");
+        assert!(
+            !pushed.exists(),
+            "revocation after pull must not start push"
+        );
+        assert_eq!(
+            service
+                .run(
+                    &revoked,
+                    "native-sync-head-preserved",
+                    crate::state::args(&["rev-parse", "HEAD"]),
+                    false
+                )
+                .await
+                .unwrap(),
+            incoming
+        );
+        assert!(Path::new(&repo.path).join("incoming.txt").exists());
+        std::fs::write(release, b"release").unwrap();
+    }
+
+    #[tokio::test]
+    async fn native_revoke_does_not_force_kill_an_authorized_detached_external_process() {
+        let (fixture, service, repo) = native_fixture().await;
+        publish(&service, &repo);
+        let _owner = service.begin_request("native-external-handoff").unwrap();
+        service
+            .bind_repository_request(&repo, "native-external-handoff", true)
+            .unwrap();
+        let ready = fixture.path().join("external-ready");
+        let release = fixture.path().join("external-release");
+        #[cfg(windows)]
+        let mut command = {
+            let executable = PathBuf::from(std::env::var_os("WINDIR").unwrap())
+                .join("System32")
+                .join("WindowsPowerShell")
+                .join("v1.0")
+                .join("powershell.exe");
+            let mut command = std::process::Command::new(executable);
+            command.args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"])
+                .arg(format!("[IO.File]::WriteAllText('{}','ready'); while (-not (Test-Path -LiteralPath '{}')) {{ Start-Sleep -Milliseconds 20 }}", ready.display(), release.display()));
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000);
+            command
+        };
+        #[cfg(not(windows))]
+        let mut command = {
+            let mut command = std::process::Command::new("/bin/sh");
+            command
+                .args([
+                    "-c",
+                    "printf ready > \"$1\"; while ! test -f \"$2\"; do sleep 0.02; done",
+                    "external-fixture",
+                ])
+                .arg(&ready)
+                .arg(&release);
+            command
+        };
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let mut child = service
+            .with_repository_authorization(&repo, "native-external-handoff", true, || {
+                command.spawn().map_err(AppError::io)
+            })
+            .unwrap();
+        wait_for_native_marker(&ready).await;
+        assert!(service
+            .active_processes("native-external-handoff")
+            .is_empty());
+        let mut revoked = repo.clone();
+        revoked.trusted = false;
+        publish(&service, &revoked);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(
+            child.try_wait().unwrap().is_none(),
+            "external user-controlled processes must not be killed by revocation"
+        );
+        std::fs::write(release, b"user finished").unwrap();
+        assert!(child.wait().unwrap().success());
+    }
+
+    #[tokio::test]
+    async fn native_directory_grant_identity_is_rechecked_even_when_repository_itself_is_unchanged()
+    {
+        let (fixture, service, repo) = native_fixture().await;
+        let scope = fixture.path().join("scope");
+        std::fs::create_dir(&scope).unwrap();
+        let nested = scope.join("nested");
+        std::fs::create_dir(&nested).unwrap();
+        let policy = Arc::new(crate::trust::TrustService::load(
+            &fixture.path().join("policy"),
+            &[],
+            &mut Vec::new(),
+        ));
+        policy
+            .directory_rule(scope.to_str().unwrap(), true)
+            .unwrap();
+        let moved = scope.join("repository");
+        std::fs::rename(&repo.path, &moved).unwrap();
+        let mut current = repo.clone();
+        current.path = crate::state::display_path(&std::fs::canonicalize(&moved).unwrap());
+        current.id = current.path.clone();
+        current.git_dir = moved.join(".git").to_string_lossy().into_owned();
+        current.common_dir = current.git_dir.clone();
+        service.set_trust_policy(policy);
+        publish(&service, &current);
+        let _owner = service.begin_request("native-parent-identity").unwrap();
+        service
+            .bind_repository_request(&current, "native-parent-identity", true)
+            .unwrap();
+        service.check_request("native-parent-identity").unwrap();
+        let previous_scope = fixture.path().join("previous-scope");
+        std::fs::rename(&scope, &previous_scope).unwrap();
+        std::fs::create_dir(&scope).unwrap();
+        std::fs::rename(previous_scope.join("repository"), &moved).unwrap();
+        assert_eq!(
+            service
+                .check_request("native-parent-identity")
+                .unwrap_err()
+                .code,
+            "AUTHORIZATION_CHANGED"
+        );
+        assert!(service.request_cancelled("native-parent-identity"));
+    }
+
     #[test]
     fn redacts_url_credentials_without_corrupting_non_ascii_text() {
         assert_eq!(

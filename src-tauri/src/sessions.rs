@@ -48,6 +48,15 @@ pub async fn start(
         .repository_transaction(repo, &action.request_id)
         .await?;
     let args = state.git.interactive_rebase_args(repo, action).await?;
+    state
+        .git
+        .check_repository_authorization(repo, &action.request_id, true)?;
+    // 命令的 owner 返回后仍需保持交接请求，直到外部 console 真正获准启动。
+    let handoff_id = state.next_id("console-handoff");
+    let handoff = state.git.begin_request(&handoff_id)?;
+    state.git.bind_repository_request(repo, &handoff_id, true)?;
+    let git = state.git.clone();
+    let repository = repo.clone();
     let id = state.next_id("console");
     let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(AppError::io)?;
     let address = listener.local_addr().map_err(AppError::io)?;
@@ -68,7 +77,9 @@ pub async fn start(
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
-    let mut child = command.spawn().map_err(AppError::io)?;
+    let mut child = git.with_repository_authorization(repo, &handoff_id, true, || {
+        command.spawn().map_err(AppError::io)
+    })?;
     listener.set_nonblocking(true).map_err(AppError::io)?;
     let plan = ConsolePlan {
         token: token.clone(),
@@ -96,6 +107,7 @@ pub async fn start(
     let app = app.clone();
     let mut session = initial.clone();
     std::thread::spawn(move || {
+        let mut handoff = Some(handoff);
         let mut lock = Some(lock);
         let connected = (|| -> Result<TcpStream> {
             let started = std::time::Instant::now();
@@ -131,9 +143,15 @@ pub async fn start(
                     session.status = "failed".into();
                     session.message = "Interactive console authentication failed.".into();
                 } else {
-                    let sent = serde_json::to_writer(&mut stream, &plan)
-                        .and_then(|_| stream.write_all(b"\n").map_err(serde_json::Error::io));
-                    let _ = stream.flush();
+                    let sent =
+                        git.with_repository_authorization(&repository, &handoff_id, true, || {
+                            serde_json::to_writer(&mut stream, &plan).map_err(AppError::io)?;
+                            stream.write_all(b"\n").map_err(AppError::io)?;
+                            stream.flush().map_err(AppError::io)
+                        });
+                    // 已发送的 console 由用户独立控制，撤销仅阻止尚未交接的计划，
+                    // 不加入 GitService 子进程表，也不强杀 shell/editor。
+                    handoff.take();
                     let _ = stream.set_read_timeout(None);
                     if sent.is_ok() {
                         session.status = "running".into();

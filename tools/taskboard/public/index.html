@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>项目任务 · QGitGraph</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#workspace">跳转到任务</a>
+  <header class="topbar">
+    <button id="sidebar-toggle" class="icon-button" type="button" aria-label="收起项目导航" aria-expanded="true" aria-controls="sidebar" data-icon="sidebar"></button>
+    <a class="app-brand" href="/" aria-label="QGitGraph 项目任务"><span class="brand-mark" data-icon="branch"></span><strong>QGitGraph</strong></a>
+    <span class="breadcrumb-separator">/</span><h1>项目任务</h1>
+    <span class="local-badge">本地工作区</span>
+    <div class="topbar-spacer"></div>
+    <button id="record-control" class="record-control" type="button"><span class="record-dot"></span><span id="record-label">未开始记录</span></button>
+    <button id="record-pause" class="small-button" type="button" hidden>暂停</button>
+    <span class="toolbar-divider"></span>
+    <button id="theme-toggle" class="icon-button" type="button" aria-label="切换到浅色主题" data-icon="sun"></button>
+    <button id="export-button" class="quiet-button" type="button"><span data-icon="download"></span>导出</button>
+    <button id="import-button" class="quiet-button" type="button"><span data-icon="upload"></span>导入</button>
+    <button id="create-button" class="primary-button" type="button"><span data-icon="plus"></span>新建任务</button>
+  </header>
+  <div id="notice" class="notice" role="status" hidden><span id="notice-text"></span><div id="notice-actions" class="inline-actions"></div><button id="notice-close" class="icon-button" type="button" aria-label="关闭提示" data-icon="close"></button></div>
+  <div class="app-layout">
+    <aside id="sidebar" class="sidebar" aria-label="项目导航">
+      <div class="project-heading"><span class="project-symbol" data-icon="folder"></span><div><strong>QGitGraph</strong><span>项目交付工作区</span></div></div>
+      <nav aria-label="任务范围"><button id="project-all" class="nav-item active" type="button"><span data-icon="board"></span><span>项目任务</span><span id="total-count" class="count">—</span></button></nav>
+      <div class="section-label"><span>交付包</span><span id="pack-count" class="count">—</span></div>
+      <nav id="pack-list" class="pack-list" aria-label="按交付包筛选"><p class="subtle sidebar-loading">正在读取本地任务…</p></nav>
+      <div class="sidebar-bottom">
+        <div class="section-label"><span>必做任务</span><span class="subtle">真实验收</span></div>
+        <div class="required-summary"><strong id="required-done">—</strong><span>/ <span id="required-total">—</span> 已完成</span></div>
+        <div id="required-progress" class="progress-track" role="progressbar" aria-label="必做任务完成数" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><span></span></div>
+        <p id="required-note" class="subtle">只有通过日志验收的任务才计入完成。</p>
+        <button id="show-baseline" class="text-button" type="button">查看全部基线 <span data-icon="arrow-right"></span></button>
+        <div class="local-note"><span data-icon="lock"></span><span>数据仅保存在本机<br>不执行命令，不读取证据路径</span></div>
+      </div>
+    </aside>
+    <main id="workspace" class="workspace" tabindex="-1">
+      <div class="workspace-toolbar">
+        <div class="view-tabs" role="group" aria-label="任务视图">
+          <button class="view-tab active" data-view="board" type="button" aria-pressed="true"><span data-icon="board"></span>看板</button>
+          <button class="view-tab" data-view="list" type="button" aria-pressed="false"><span data-icon="list"></span>列表</button>
+          <button class="view-tab" data-view="logs" type="button" aria-pressed="false"><span data-icon="activity"></span>日志</button>
+        </div>
+        <div class="toolbar-spacer"></div>
+        <label class="search-field"><span data-icon="search"></span><span class="sr-only">搜索任务 ID、标题或描述</span><input id="search" type="search" placeholder="搜索任务、编号、描述…" autocomplete="off"><kbd>/</kbd></label>
+        <button id="reload-button" class="icon-button" type="button" aria-label="重新读取本地任务" data-icon="refresh"></button>
+      </div>
+      <div id="filter-bar" class="filter-bar">
+        <label><span class="sr-only">优先级</span><select id="priority-filter" aria-label="优先级"><option value="all">全部优先级</option><option value="P0">P0 · 最高</option><option value="P1">P1 · 高</option><option value="P2">P2 · 普通</option></select></label>
+        <label><span class="sr-only">任务领域</span><select id="area-filter" aria-label="任务领域"><option value="all">全部领域</option></select></label>
+        <label><span class="sr-only">交付包</span><select id="pack-filter" aria-label="交付包"><option value="all">全部交付包</option></select></label>
+        <label><span class="sr-only">必做范围</span><select id="required-filter" aria-label="必做范围"><option value="required">仅必做任务</option><option value="all">全部任务 / 基线</option><option value="optional">仅选做任务</option></select></label>
+        <span class="toolbar-divider"></span>
+        <label class="checkbox-label"><input id="blocked-filter" type="checkbox">仅阻塞</label>
+        <label class="checkbox-label"><input id="archived-filter" type="checkbox">含归档</label>
+        <button id="clear-filters" class="text-button" type="button">重置</button>
+        <span id="filter-count" class="filter-count">正在连接…</span>
+      </div>
+      <div id="view-content" class="view-content" aria-busy="true">
+        <div class="loading-state"><span class="loading-line"></span><strong>正在连接本地看板</strong><span>localhost:14732 · 正在读取持久化数据</span></div>
+      </div>
+      <div class="workspace-hint"><span data-icon="info"></span><span>拖拽或在详情中移动任务；「已完成」须通过执行日志验收，不可拖入。</span><span class="toolbar-spacer"></span><span>按 <kbd>/</kbd> 搜索 · <kbd>Esc</kbd> 关闭详情</span></div>
+    </main>
+  </div>
+  <footer class="statusbar"><span id="connection-status" class="connection-status"><span class="status-dot"></span>正在连接本地服务</span><span id="revision-label">版本 —</span><span class="toolbar-spacer"></span><span id="save-status">尚未读取数据</span><span class="statusbar-divider">|</span><span>本地任务看板</span></footer>
+  <aside id="task-drawer" class="task-drawer" role="dialog" aria-modal="false" aria-labelledby="drawer-heading" hidden></aside>
+  <dialog id="action-dialog" class="action-dialog" aria-labelledby="dialog-title"></dialog>
+  <input id="import-file" type="file" accept="application/json,.json" hidden>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <noscript><div class="noscript">此本地看板需要启用 JavaScript。数据不会上传到外部服务。</div></noscript>
+</body>
+</html>

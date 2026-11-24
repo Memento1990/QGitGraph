@@ -36,6 +36,8 @@ const DETAIL_FORMAT_MAILMAP: &str =
 const REF_FORMAT: &str = "%(refname)%00%(objectname)%00%(*objectname)%00%(objecttype)%00%(*objecttype)%00%(upstream)%00%(HEAD)%00%(subject)%00";
 const CONTENT_LIMIT: usize = 2 * 1024 * 1024;
 const PATCH_LIMIT: usize = 4 * 1024 * 1024;
+type SubmoduleParent = Option<(usize, String, String)>;
+type SafeWorkingStates = Vec<(WorkingState, SubmoduleParent)>;
 
 fn argument(message: impl Into<String>) -> AppError {
     AppError::new("ARGUMENT", message)
@@ -360,7 +362,179 @@ impl GitService {
         Ok((refs, stashes))
     }
 
+    /// Status and worktree diffs can run clean/process filters even with
+    /// --no-ext-diff/--no-textconv. Enumerate effective config without invoking
+    /// converters; include/includeIf must be visible too, or they bypass trust.
+    async fn ensure_trusted_filters(&self, repo: &Repository, request_id: &str) -> Result<()> {
+        if repo.trusted {
+            return Ok(());
+        }
+        let output = self
+            .run_output(
+                repo,
+                request_id,
+                vec![
+                    "config".into(),
+                    "--null".into(),
+                    "--includes".into(),
+                    "--get-regexp".into(),
+                    r"^filter\..*\.(clean|smudge|process|required)$".into(),
+                ],
+                None,
+                false,
+            )
+            .await?;
+        match output.code {
+            0 => Err(AppError::new(
+                "UNTRUSTED_FILTER",
+                "This repository configures Git content filters. Trust it before reading working status or worktree diffs; filters can execute commands.",
+            )),
+            1 if output.stdout.is_empty() && output.stderr.is_empty() => Ok(()),
+            _ => Err(AppError::git(
+                "Could not safely check Git content-filter configuration.",
+            )),
+        }
+    }
+
     pub async fn working_state(&self, repo: &Repository, request_id: &str) -> Result<WorkingState> {
+        let _request = self.request_scope(request_id)?;
+        let started = std::time::Instant::now();
+        let mut pending = vec![(self.clone(), repo.clone(), 0_usize, None)];
+        let mut completed = SafeWorkingStates::new();
+        let mut visited = HashSet::new();
+        while let Some((service, current, depth, parent)) = pending.pop() {
+            self.check_request(request_id)?;
+            if started.elapsed() > std::time::Duration::from_secs(30)
+                || completed.len() + pending.len() >= 256
+                || depth > 5
+                || !visited.insert(fs::canonicalize(&current.path).map_err(io_error)?)
+            {
+                return Err(AppError::new("SUBMODULE_LIMIT", "Safe submodule status exceeded its depth, repository or time budget. Working state is unknown; no recursive Git status was run."));
+            }
+            let state = service.working_state_shallow(&current, request_id).await?;
+            let index = completed.len();
+            completed.push((state, parent));
+            if current.bare {
+                continue;
+            }
+            let entries = parse::index_entries(
+                &service
+                    .run_bytes(
+                        &current,
+                        request_id,
+                        vec!["ls-files".into(), "--stage".into(), "-z".into()],
+                        false,
+                    )
+                    .await?,
+            )?;
+            let mut links = HashMap::new();
+            for entry in entries.into_iter().filter(|entry| entry.mode == "160000") {
+                if entry.stage == 0 || entry.stage == 2 {
+                    links.insert(entry.path, entry.oid);
+                }
+            }
+            for (path, oid) in links {
+                self.check_request(request_id)?;
+                if depth >= 5
+                    || completed.len() + pending.len() >= 256
+                    || started.elapsed() > std::time::Duration::from_secs(30)
+                {
+                    return Err(AppError::new("SUBMODULE_LIMIT", "Safe submodule status exceeded its depth, repository or time budget. Working state is unknown; no recursive Git status was run."));
+                }
+                let Some(root) = queries::submodule_root(&current, &path)? else {
+                    continue;
+                };
+                let child_path = crate::state::display_path(&root);
+                let mut child = Repository {
+                    id: String::new(),
+                    path: child_path.clone(),
+                    name: String::new(),
+                    git_dir: String::new(),
+                    common_dir: String::new(),
+                    head: None,
+                    branch: None,
+                    trusted: false,
+                    bare: false,
+                };
+                let probe = service.nested_probe_service(request_id)?;
+                let output = probe
+                    .run(
+                        &child,
+                        request_id,
+                        vec![
+                            "rev-parse".into(),
+                            "--path-format=absolute".into(),
+                            "--absolute-git-dir".into(),
+                            "--git-common-dir".into(),
+                        ],
+                        false,
+                    )
+                    .await?;
+                let directories: Vec<_> = output.lines().collect();
+                if directories.len() != 2 {
+                    return Err(AppError::new(
+                        "GIT_PARSE",
+                        "Invalid submodule discovery output.",
+                    ));
+                }
+                child.id = child_path;
+                child.git_dir = directories[0].into();
+                child.common_dir = directories[1].into();
+                let reader = service.nested_read_service(&child, request_id)?;
+                // 子仓始终单独核验过滤器，不从父仓继承 trusted；禁止 Git 内部递归。
+                pending.push((reader, child, depth + 1, Some((index, path, oid))));
+            }
+        }
+        for index in (1..completed.len()).rev() {
+            let (state, parent) = &completed[index];
+            let (parent, path, oid) = parent.clone().expect("child status has a parent");
+            let commit_changed = state.head.as_deref().is_some_and(|head| head != oid);
+            let untracked = state.files.iter().any(|file| {
+                file.status == "?" || file.submodule.as_ref().is_some_and(|sub| sub.untracked)
+            });
+            let modified = state.files.iter().any(|file| {
+                file.submodule.as_ref().map_or(file.status != "?", |sub| {
+                    file.staged || sub.commit_changed || sub.modified
+                })
+            });
+            let parent_state = &mut completed[parent].0;
+            if let Some(file) = parent_state.files.iter_mut().find(|file| file.path == path) {
+                file.submodule = Some(SubmoduleStatus {
+                    commit_changed,
+                    modified,
+                    untracked,
+                });
+                if commit_changed || modified || untracked {
+                    file.unstaged = true;
+                    if file.status.len() == 2 && file.status.ends_with('.') {
+                        file.status.replace_range(1..2, "M");
+                    }
+                }
+            } else if commit_changed || modified || untracked {
+                parent_state.files.push(ChangedFile {
+                    path,
+                    old_path: None,
+                    status: ".M".into(),
+                    additions: None,
+                    deletions: None,
+                    staged: false,
+                    unstaged: true,
+                    submodule: Some(SubmoduleStatus {
+                        commit_changed,
+                        modified,
+                        untracked,
+                    }),
+                });
+            }
+        }
+        Ok(completed.remove(0).0)
+    }
+
+    async fn working_state_shallow(
+        &self,
+        repo: &Repository,
+        request_id: &str,
+    ) -> Result<WorkingState> {
         if repo.bare {
             let head = self.optional_head(repo, request_id).await?;
             // symbolic-ref also works for an unborn bare repository. Exit 1
@@ -388,6 +562,8 @@ impl GitService {
             return Ok(WorkingState {
                 files: Vec::new(),
                 branch,
+                upstream: None,
+                tracking_known: false,
                 ahead: 0,
                 behind: 0,
                 operation: operation_state(repo)?,
@@ -395,6 +571,7 @@ impl GitService {
                 head,
             });
         }
+        self.ensure_trusted_filters(repo, request_id).await?;
         let bytes = self
             .run_bytes(
                 repo,
@@ -406,7 +583,7 @@ impl GitService {
                     "--ahead-behind".into(),
                     "-z".into(),
                     "--untracked-files=all".into(),
-                    "--ignore-submodules=none".into(),
+                    "--ignore-submodules=dirty".into(),
                 ],
                 false,
             )
@@ -630,6 +807,35 @@ impl GitService {
         context: usize,
         paths: &[String],
     ) -> Result<Vec<String>> {
+        if matches!(comparison.target, Side::Worktree) {
+            self.ensure_trusted_filters(repo, request_id).await?;
+            let entries = parse::index_entries(
+                &self
+                    .run_bytes(
+                        repo,
+                        request_id,
+                        vec!["ls-files".into(), "--stage".into(), "-z".into()],
+                        false,
+                    )
+                    .await?,
+            )?;
+            let state = if entries.iter().any(|entry| entry.mode == "160000") {
+                Some(self.working_state(repo, request_id).await?)
+            } else {
+                None
+            };
+            if state.as_ref().is_some_and(|state| {
+                state.files.iter().any(|file| {
+                    (paths.is_empty() || paths.iter().any(|path| path == &file.path))
+                        && file
+                            .submodule
+                            .as_ref()
+                            .is_some_and(|sub| sub.modified || sub.untracked)
+                })
+            }) {
+                return Err(AppError::new("SUBMODULE_DIRTY", "A child repository has uncommitted or untracked changes. Its parent worktree diff is incomplete; open the child repository to review those changes."));
+            }
+        }
         let mut args = vec![
             "-c".into(),
             "core.quotePath=true".into(),
@@ -638,7 +844,8 @@ impl GitService {
             "--no-textconv".into(),
             "--no-color".into(),
             "--no-relative".into(),
-            "--ignore-submodules=none".into(),
+            "--ignore-submodules=dirty".into(),
+            "--submodule=short".into(),
             "--find-renames=50%".into(),
             "--src-prefix=a/".into(),
             "--dst-prefix=b/".into(),

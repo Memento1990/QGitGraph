@@ -3,9 +3,11 @@ identifier = "allow-app-commands"
 description = "Allow the application-specific, validated repository commands in the main window."
 commands.allow = [
   "diagnostics", "check_for_updates", "get_performance_data", "load_state", "save_state", "pick_repository", "open_repository",
-  "trust_repository", "discover_repositories", "get_refs", "get_history",
-  "get_working_state", "get_commit_detail", "compare_commits", "get_diff", "get_diff_patch", "get_file_content",
-  "get_stashes", "get_remotes", "get_repo_config", "git_action", "cancel_request",
+  "usage_status", "usage_start", "usage_boundary", "usage_append",
+  "get_trust_state", "set_directory_trust", "set_repository_trust",
+  "probe_repository", "trust_repository", "deactivate_repository", "discover_repositories", "get_refs", "get_history",
+  "get_working_state", "get_working_index", "get_commit_detail", "compare_commits", "get_diff", "get_diff_patch", "get_file_content",
+  "get_stashes", "get_remotes", "get_repo_config", "git_action", "working_action", "cancel_request",
   "open_terminal", "open_editor", "external_diff", "open_url", "copy_text", "export_config",
   "import_config", "get_snapshot", "get_tag_detail", "get_stash_detail", "get_containment",
   "get_submodules", "verify_signature", "archive_ref", "open_snapshot"

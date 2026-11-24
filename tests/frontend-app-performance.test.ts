@@ -3,6 +3,7 @@ import type { Commit, Host, Repository, RepositorySnapshot, WorkingState } from 
 import { defaultState } from '../src/shared/protocol';
 import { App } from '../src/ui/app';
 import { CommitTable, type TableModel } from '../src/ui/table';
+import type { LocalChangesPane } from '../src/ui/local-changes';
 import { HistoryLayoutCache, RefreshFlags } from '../src/lib/performance-models';
 
 /** Small DOM test double: exercises the real app/table code, without a browser or DOM dependency. */
@@ -20,6 +21,7 @@ class TestNode {
   title = '';
   value = '';
   type = '';
+  selectionStart = 0; selectionEnd = 0; selectionDirection = 'none';
   tabIndex = 0;
   text = '';
   scrollTop = 0;
@@ -28,7 +30,7 @@ class TestNode {
   clientWidth = 900;
   offsetHeight = 100;
   replacements = 0;
-  style = { setProperty: vi.fn(), getPropertyValue: () => '', top: '', height: '', minWidth: '', transform: '', colorScheme: '' };
+  style = { setProperty: vi.fn(), getPropertyValue: () => '', top: '', left: '', right: '', width: '', boxSizing: '', height: '', minWidth: '', transform: '', colorScheme: '' };
   classList = {
     contains: (name: string) => this.className.split(/\s+/).includes(name),
     add: (...names: string[]) => { names.forEach(name => { this.classList.toggle(name, true); }); },
@@ -85,7 +87,8 @@ class TestNode {
   querySelector<T extends TestNode = TestNode>(selector: string): T | null { return this.querySelectorAll<T>(selector)[0] ?? null; }
   closest(selector: string): TestNode | null { return selector.split(',').some(item => this.matches(item)) ? this : this.parentElement?.closest(selector) ?? null; }
   focus(): void { dom.activeElement = this; }
-  select(): void {}
+  select(): void { this.setSelectionRange(0, this.value.length); }
+  setSelectionRange(start: number, end: number, direction = 'none'): void { this.selectionStart = start; this.selectionEnd = end; this.selectionDirection = direction; }
   getBoundingClientRect() { return { top: 0, left: 0, right: this.clientWidth, bottom: this.clientHeight, width: this.clientWidth, height: this.clientHeight }; }
   getContext(): null { return null; }
 }
@@ -125,8 +128,8 @@ function appHost(overrides: Partial<Host> = {}): Host {
 }
 type AppInternals = {
   initialized: boolean; repo: Repository | null; commits: Commit[]; selected: string | null; hasMore: boolean;
-  actionBusy: boolean; detailsOpen: boolean; details: { show: ReturnType<typeof vi.fn>; refresh: ReturnType<typeof vi.fn>; invalidate: ReturnType<typeof vi.fn>; view: null; element: TestNode; clear: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn>; updateSettings: ReturnType<typeof vi.fn> };
-  graph: HistoryLayoutCache; table: CommitTable; workingDirtyEpoch: number; autoLoadBlocked: boolean;
+  actionBusy: boolean; errorbar: HTMLElement; detailsOpen: boolean; details: { show: ReturnType<typeof vi.fn>; refresh: ReturnType<typeof vi.fn>; invalidate: ReturnType<typeof vi.fn>; view: null; element: TestNode; clear: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn>; updateSettings: ReturnType<typeof vi.fn>; setInlineSide: ReturnType<typeof vi.fn> };
+  graph: HistoryLayoutCache; table: CommitTable; localChanges: LocalChangesPane; localOpen: boolean; workingDirtyEpoch: number; autoLoadBlocked: boolean;
   intentEpoch: number; historyGeneration: number; openGeneration: number; loadingHistory: boolean; restoringView: boolean;
   searchInput: TestNode; search: string; queryMode: 'filter' | 'search'; working: WorkingState | null;
   store: { state: ReturnType<typeof defaultState>; queue: () => void }; refreshQueue: { request(mask: number): void; idle(): Promise<void>; resume(): void; pendingMask: number };
@@ -141,7 +144,7 @@ function makeApp(host = appHost()) {
   state.initialized = true; state.store.state.settings.autoLoad = false; state.store.state.settings.autoCenterDetails = false;
   const clear = vi.fn(() => { state.details.view = null; });
   state.details.destroy(); state.details = { show: vi.fn(async () => undefined), refresh: vi.fn(), invalidate: vi.fn(), view: null,
-    element: new TestNode('section'), clear, destroy: vi.fn(), updateSettings: vi.fn() };
+    element: new TestNode('section'), clear, destroy: vi.fn(), updateSettings: vi.fn(), setInlineSide: vi.fn() };
   liveApps.push(app); return { app, state, host };
 }
 function model(): TableModel {
@@ -186,6 +189,7 @@ describe('frontend progressive history and refresh', () => {
     const page = deferred<{ commits: Commit[]; hasMore: boolean }>();
     const { state } = makeApp(appHost({ history: vi.fn(() => page.promise) }));
     const open = state.openRepository(repo.path); await microtasks();
+    expect(state.errorbar.hidden, (state.errorbar as unknown as TestNode).textContent).toBe(true);
     const stale = commit('a'); stale.refs = [{ name: 'deleted', fullName: 'refs/heads/deleted', oid: 'a', kind: 'branch', current: false, upstream: null, subject: '' }];
     page.resolve({ commits: [stale], hasMore: false }); await open;
     expect(state.commits[0].refs).toEqual([]);
@@ -210,9 +214,12 @@ describe('frontend progressive history and refresh', () => {
     vi.mocked(host.snapshot).mockImplementationOnce(() => status.promise); vi.mocked(host.history).mockImplementationOnce(() => page.promise);
     const refresh = state.refresh(); expect(state.commits).toBe(before); expect(state.table.scrollTop).toBe(28);
     status.resolve(snapshot('new')); await microtasks(); expect(state.commits).toBe(before);
-    state.selectCommit('a', false); state.table.scrollTop = 56;
+    state.selectCommit('a', false); state.table.scrollTop = 56; state.table.scrollLeft = 19;
+    const anchor = state.table.captureAnchor();
     page.resolve({ commits: [commit('new', ['a']), ...before], hasMore: false }); await refresh;
-    expect(state.commits[0].oid).toBe('new'); expect(state.selected).toBe('a'); expect(state.table.scrollTop).toBe(56);
+    expect(state.commits[0].oid).toBe('new'); expect(state.selected).toBe('a');
+    // A prepended row changes pixels, not the user's semantic row/detail anchor or horizontal scroll.
+    expect(state.table.captureAnchor()).toEqual(anchor); expect(state.table.scrollTop).toBe(56 + state.store.state.settings.rowHeight); expect(state.table.scrollLeft).toBe(19);
   });
 
   it('publishes explicit refresh history before slow metadata while preserving newer selection and scroll', async () => {
@@ -224,12 +231,13 @@ describe('frontend progressive history and refresh', () => {
     let finished = false; const refresh = state.refresh().then(() => { finished = true; });
     expect(host.snapshot).toHaveBeenCalledTimes(2); expect(host.history).toHaveBeenCalledTimes(2);
     expect(state.commits).toBe(before); expect(state.selected).toBe('b'); expect(state.table.scrollTop).toBe(28);
-    state.selectCommit('a', false); state.table.scrollTop = 56;
+    state.selectCommit('a', false); state.table.scrollTop = 56; state.table.scrollLeft = 23;
+    const anchor = state.table.captureAnchor();
     page.resolve({ commits: [commit('new', ['a']), ...before], hasMore: false }); await microtasks(); paint();
     expect(state.commits[0].oid).toBe('new'); expect(finished).toBe(false);
-    expect(state.selected).toBe('a'); expect(state.table.scrollTop).toBe(56);
+    expect(state.selected).toBe('a'); expect(state.table.captureAnchor()).toEqual(anchor); expect(state.table.scrollTop).toBe(56 + state.store.state.settings.rowHeight);
     status.resolve(snapshot('new')); await refresh;
-    expect(host.history).toHaveBeenCalledTimes(2); expect(state.selected).toBe('a'); expect(state.table.scrollTop).toBe(56);
+    expect(host.history).toHaveBeenCalledTimes(2); expect(state.selected).toBe('a'); expect(state.table.captureAnchor()).toEqual(anchor); expect(state.table.scrollLeft).toBe(23);
   });
 
   it('rejects cancelled parallel refresh history after a newer query without replaying it after metadata', async () => {
@@ -252,10 +260,25 @@ describe('frontend progressive history and refresh', () => {
     expect(host.history).toHaveBeenCalledTimes(2); expect(state.commits.map(item => item.oid)).toEqual(['a', 'grafted']);
   });
 
-  it('refreshes a selected working diff after dirty events even when status fingerprint is identical', async () => {
-    const { state } = makeApp(); await state.openRepository(repo.path); state.selectCommit('WORKTREE', false);
-    state.details.refresh.mockClear(); await state.refresh(); await state.refresh();
-    expect(state.details.refresh).toHaveBeenCalledTimes(2);
+  it.each(['new identity', 'reused identity'] as const)('refreshes the independent local preview on real snapshots with identical status fingerprints (%s) without opening history details', async identity => {
+    const changed = snapshot(); changed.working.files = [{ path: 'same.ts', oldPath: null, status: ' M', additions: null, deletions: null, staged: false, unstaged: true }];
+    let revision = 0;
+    const host = appHost({
+      snapshot: vi.fn(async () => identity === 'reused identity' ? changed : structuredClone(changed)),
+      diff: vi.fn(async () => ({ patch: `@@ -1 +1 @@\n-old\n+edit-${++revision}\n`, binary: false, truncated: false, oldContent: 'old\n', newContent: `edit-${revision}\n` })),
+    });
+    const { state } = makeApp(host); await state.openRepository(repo.path); await microtasks(); paint();
+    state.selectCommit('b', false); const selection = state.selected;
+    state.details.show.mockClear(); state.details.refresh.mockClear(); state.selectCommit('WORKTREE', false);
+    const preview = state.localChanges.previewElement as unknown as TestNode;
+    expect(state.localOpen).toBe(true); expect(preview.textContent).toContain('edit-1');
+    for (const revision of [2, 3]) {
+      await state.refresh(); await microtasks(); paint();
+      expect(preview.textContent).toContain(`edit-${revision}`); expect(preview.textContent).not.toContain(`edit-${revision - 1}`);
+    }
+    expect(host.snapshot).toHaveBeenCalledTimes(3); expect(host.diff).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(host.diff).mock.calls.map(([query]) => ({ path: query.path, base: query.base, target: query.target }))).toEqual(Array(3).fill({ path: 'same.ts', base: 'INDEX', target: 'WORKTREE' }));
+    expect(state.selected).toBe(selection); expect(state.details.show).not.toHaveBeenCalled(); expect(state.details.refresh).not.toHaveBeenCalled();
   });
 
   it('queues dirty focus work while hidden or action-blocked, then replays once resumed', async () => {
@@ -325,6 +348,40 @@ describe('CommitTable incremental visible rows', () => {
     table.setModel({ ...input, inline: { oid: 'b', height: 360, element: detail as unknown as HTMLElement } }); paint();
     expect(dom.getElementById('commit-b')).toBe(before); expect(before.style.top).toBe('28px');
     expect(dom.getElementById('commit-c')!.style.top).toBe('416px');
+  });
+  it('anchors inline details to a narrow viewport rather than horizontally scrolled wide columns', () => {
+    const table = makeTable(), input = model(), detail = new TestNode('section'), metadata = new TestNode('div'), files = new TestNode('aside');
+    metadata.className = 'commit-metadata'; files.className = 'files-pane'; detail.className = 'details-pane history-details'; detail.append(metadata, files);
+    const viewport = table.viewport as unknown as TestNode, root = table.element as unknown as TestNode;
+    viewport.clientWidth = 406; viewport.scrollLeft = 321;
+    table.setModel({ ...input, inline: { oid: 'a', height: 320, element: detail as unknown as HTMLElement } });
+    const slot = root.querySelector('.inline-detail-slot')!, cell = slot.querySelector('.inline-detail-cell')!, content = root.querySelector('.table-content')!;
+    // setModel must constrain the pane before the first paint/ResizeObserver measurement.
+    expect(Number.parseFloat(content.style.minWidth)).toBeGreaterThan(viewport.clientWidth);
+    expect(slot.style).toMatchObject({ left: '321px', width: '406px', right: 'auto', boxSizing: 'border-box', top: '28px' });
+    expect(cell.firstElementChild).toBe(detail); expect(slot.contains(metadata)).toBe(true); expect(slot.contains(files)).toBe(true);
+    expect(Number.parseFloat(slot.style.left) - viewport.scrollLeft).toBe(0);
+    expect(Number.parseFloat(slot.style.left) + Number.parseFloat(slot.style.width) - viewport.scrollLeft).toBe(viewport.clientWidth);
+    paint(); expect(root.querySelector('.table-header')!.style.transform).toBe('translateX(-321px)');
+    expect(root.querySelector('.table-header')!.children).toHaveLength(5); expect(input.settings.columns).toEqual({ date: true, author: true, commit: true });
+  });
+  it('updates inline viewport geometry in the same scroll/resize frame without replacing nodes or moving vertical anchors', () => {
+    let resize: ResizeObserverCallback | undefined;
+    vi.stubGlobal('ResizeObserver', class { constructor(callback: ResizeObserverCallback) { resize = callback; } observe() {} disconnect() {} });
+    const table = makeTable(), input = model(), detail = new TestNode('section');
+    const viewport = table.viewport as unknown as TestNode, root = table.element as unknown as TestNode;
+    viewport.clientWidth = 520; viewport.scrollLeft = 180; viewport.scrollTop = 56;
+    table.setModel({ ...input, inline: { oid: 'a', side: 'before', height: 320, element: detail as unknown as HTMLElement } }); paint();
+    const slot = root.querySelector('.inline-detail-slot')!, cell = slot.querySelector('.inline-detail-cell')!, row = dom.getElementById('commit-b'), canvas = root.querySelector('.graph-canvas')!;
+    const anchor = table.captureAnchor(), replacements = cell.replacements, top = slot.style.top, scrollTop = viewport.scrollTop;
+    viewport.scrollLeft = 437; viewport.emit('scroll');
+    expect(slot.style.left).toBe('437px'); expect(slot.style.width).toBe('520px');
+    viewport.clientWidth = 406; resize!([], {} as ResizeObserver);
+    expect(slot.style.width).toBe('406px'); expect(slot.style.left).toBe('437px'); expect(slot.style.top).toBe(top);
+    paint(); expect(viewport.scrollTop).toBe(scrollTop); expect(table.captureAnchor()?.oid).toBe(anchor?.oid); expect(table.captureAnchor()?.offset).toBe(anchor?.offset);
+    expect(cell.firstElementChild).toBe(detail); expect(cell.replacements).toBe(replacements); expect(dom.getElementById('commit-b')).toBe(row); expect(root.querySelector('.graph-canvas')).toBe(canvas);
+    expect(root.querySelector('.table-header')!.style.transform).toBe('translateX(-437px)');
+    table.scrollLeft = 29; expect(slot.style.left).toBe('29px'); paint(); expect(slot.style.width).toBe('406px');
   });
   it('reuses unchanged visible rows when a new history page is appended', () => {
     const table = makeTable(), input = model(); table.setModel(input); paint();

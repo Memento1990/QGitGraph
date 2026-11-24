@@ -1,0 +1,37 @@
+.history-document-tabs { display: flex; align-items: stretch; flex: 0 0 auto; min-width: 0; min-height: 32px; overflow: auto hidden; gap: 1px; background: var(--surface-sunken); border-bottom: 1px solid var(--border); scrollbar-width: thin; }
+.history-document-tab-group { display: flex; align-items: center; flex: 0 0 auto; min-width: 0; max-width: 330px; border-right: 1px solid var(--border-subtle); }
+.history-document-tabs .history-document-tab { flex: 0 1 auto; min-width: 0; min-height: 31px; max-width: 300px; border-radius: 0; padding: 4px 9px; border-bottom: 2px solid transparent; }
+.history-document-tab > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.history-document-tabs .history-document-tab[aria-selected='true'] { background: var(--surface); color: var(--accent); border-bottom-color: var(--accent); }
+.history-document-tabs .history-document-close { flex: 0 0 24px; width: 24px; min-height: 25px; padding: 3px; }
+.history-document-surface { display: flex; flex: 1 1 0; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--surface); container-type: inline-size; }
+.history-document-surface[hidden] { display: none; }
+.history-document-heading { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; min-width: 0; min-height: 47px; gap: 5px 9px; padding: 5px 9px; border-bottom: 1px solid var(--border); background: var(--surface-raised); }
+.history-document-identity { flex: 1 1 180px; min-width: 100px; overflow: hidden; }
+.history-document-path, .history-document-context { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-document-path { font-size: .94rem; font-weight: 600; }
+.history-document-context { margin-top: 3px; font-size: .8rem; }
+.history-document-tools { flex: 0 1 auto; max-width: 100%; min-width: 0; margin-left: auto; }
+.history-document-tools .diff-toolbar { flex-wrap: wrap; justify-content: flex-end; min-height: 28px; padding: 0; border: 0; gap: 4px; background: transparent; }
+.history-document-tools .diff-toolbar > .spacer { display: none; }
+.history-document-tools .diff-toolbar .button-group, .history-document-tools .diff-toolbar select { flex-shrink: 0; }
+.history-document-tools .diff-toolbar > .muted { flex: 0 1 auto; max-width: 100px; }
+.history-document-body { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; min-height: 0; overflow: hidden; }
+.history-document-body > .diff-view { flex: 1 1 0; }
+.history-document-body > .loading-state, .history-document-body > .empty-state { margin: auto; }
+.history-document-footer { display: flex; flex-wrap: wrap; flex: 0 0 auto; gap: 3px 12px; align-items: center; min-height: 27px; padding: 3px 9px; border-top: 1px solid var(--border); font-size: .8rem; background: var(--surface-sunken); }
+.history-document-footer .checkbox { font-size: inherit; }
+.history-document-footer .button { min-height: 22px; }
+.history-document-surface .diff-scroll { overscroll-behavior: contain; overflow-anchor: none; }
+@container (max-width: 800px) { .history-document-tools { flex: 1 1 100%; padding-top: 4px; border-top: 1px solid var(--border-subtle); } }
+.history-document-surface .diff-secondary-menu { position: relative; flex: 0 0 25px; }
+.diff-secondary-menu > summary { list-style: none; font-size: 15px; }
+.diff-secondary-menu > summary::-webkit-details-marker { display: none; }
+.diff-secondary-menu .diff-secondary-popover { position: absolute; top: calc(100% + 5px); right: 0; z-index: 20; display: flex; align-items: center; gap: 5px; padding: 7px; background: var(--surface-raised); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.diff-secondary-menu:not([open]) .diff-secondary-popover { display: none; }
+.history-document-heading > .history-document-identity { flex-basis: 150px; }
+.history-document-tools .historical-diff-toolbar { gap: 4px; }
+.history-document-tools .historical-diff-toolbar .button { font-size: 11px; }
+.history-document-tools .diff-file-navigation,
+.history-document-tools .diff-change-navigation { gap: 1px; }
+@media (forced-colors: active) { .history-document-tab[aria-selected='true'] { outline: 1px solid Highlight; outline-offset: -2px; } }

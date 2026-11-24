@@ -278,8 +278,9 @@ function inspectOwnedOutput() {
 }
 
 function inputHashes() {
-  return Object.fromEntries(['package.json', 'package-lock.json', 'src-tauri/Cargo.toml', 'src-tauri/Cargo.lock']
-    .map(relative => [relative, sha(fs.readFileSync(path.join(ROOT, ...relative.split('/'))))]));
+  return Object.fromEntries(['package.json', 'package-lock.json', 'src-tauri/Cargo.toml', 'src-tauri/Cargo.lock',
+    'src/components/SHADCN_LICENSE.txt', 'src/styles/workbench.css']
+    .map(relative => [relative, sha(fs.readFileSync(sourceFile(ROOT, relative)))]));
 }
 function assertInputs(hashes) {
   if (json(inputHashes()) !== json(hashes)) throw new Error('Dependency inputs changed during collection; rerun without concurrent dependency updates.');
@@ -384,6 +385,18 @@ function collectPackage(data) {
     add(headersOutput, `Generated attribution/comment excerpts for ${packageId}\nSource: locked, locally installed package. Comment text below is copied without editing.\nThese excerpts are NOT a substitute for missing full license terms.\n\n${headers.map(h => `===== ${h.source} =====\n${h.text}\n`).join('\n')}`);
   }
   const embedded = [];
+  if (data.ecosystem === 'npm' && data.name === 'lucide-vue-next') {
+    const original = files.find(([file, bytes]) => licenseName.test(file)
+      && /ISC License/.test(bytes.toString('utf8'))
+      && /The MIT License \(MIT\) \(for portions derived from Feather\)/.test(bytes.toString('utf8'))
+      && /Cole Bemis/.test(bytes.toString('utf8'))
+      && /Permission is hereby granted[\s\S]*The above copyright notice[\s\S]*OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE/.test(bytes.toString('utf8')));
+    if (original) embedded.push({ name: 'Feather-derived portions of Lucide', version: null, source: original[0],
+      output: copied.find(file => file.source === original[0]).output,
+      license: 'MIT for Feather-derived portions, alongside Lucide ISC; the entire original LICENSE, including both full grants and warranties, is retained unchanged.' });
+    else issue('UNKNOWN_LUCIDE_FEATHER_LICENSE_TEXT', packageId,
+      'The expected original combined Lucide ISC and full Feather/Cole Bemis MIT terms were not found. Do not replace the missing portion with a template or infer ISC covers Feather.');
+  }
   if (data.ecosystem === 'npm' && data.name === '@tauri-apps/api') {
     const tslib = headers.filter(h => /^external\/tslib\//.test(h.source) && /Copyright \(c\) Microsoft Corporation/.test(h.text) && /Permission to use, copy, modify/.test(h.text));
     if (tslib.length) {
@@ -420,7 +433,7 @@ function collectPackage(data) {
       `Original unmodified locked Cargo source archive: [${data.name}-${data.version}.crate](${path.posix.relative(directory, sources.output)}). SHA-256: \`${sources.sha256}\`.`,
       `Public copy: ${sources.sourceURL}`, '[Source access and terms](../../source-availability.md). This applies to covered third-party files, not unrelated application source.', ''] : []),
     ...(headersOutput ? ['## Original source attribution/license comments', '', '[SOURCE_HEADERS.txt](SOURCE_HEADERS.txt) (comment excerpts, not implementation code).', ''] : []),
-    ...(embedded.length ? ['## Bundled third-party helper', '', ...embedded.map(e => `- ${md(e.name)}; version UNKNOWN/not separately declared. [Original permission comment](embedded/${path.posix.basename(e.output)}) from ${md(e.source)}. ${md(e.license)}`), ''] : []),
+    ...(embedded.length ? ['## Embedded third-party portions and helpers', '', ...embedded.map(e => `- ${md(e.name)}; version UNKNOWN/not separately declared. [Original retained permission text](${path.posix.relative(directory, e.output)}) from ${md(e.source)}. ${md(e.license)}`), ''] : []),
     '## Review findings', '',
     ...issues.filter(i => i.package === packageId).map(i => `- **${i.code}**: ${md(i.message)}`),
   ];
@@ -429,11 +442,43 @@ function collectPackage(data) {
   inventory.push(record);
 }
 
+function localComponents() {
+  const source = 'src/components/SHADCN_LICENSE.txt';
+  const bytes = fs.readFileSync(sourceFile(ROOT, source));
+  if (!/^MIT License\r?\n/.test(bytes.toString('utf8')) || bytes.length <= 300) {
+    throw new Error('Local shadcn-vue license is missing or no longer declares the expected full MIT terms; review the original, do not synthesize replacement text.');
+  }
+  const directory = 'notices/local/shadcn-vue';
+  const output = `${directory}/files/SHADCN_LICENSE.txt`;
+  add(output, bytes);
+  const record = {
+    ecosystem: 'local', name: 'shadcn-vue (locally maintained components)', version: 'unversioned',
+    identity: 'src/components/ui', source, repository: null, declaredAuthors: [], declaredLicense: 'MIT',
+    relationship: 'vendored editable Vue component source in src/components/ui; not an installed npm package',
+    collectionStatus: 'FILES_COLLECTED_NOT_LEGALLY_VERIFIED', vcs: null, notice: `${directory}/NOTICE.md`,
+    legalFiles: [{ source, output, sha256: sha(bytes), bytes: bytes.length }],
+    upstreamLegalFiles: [], sourceArchive: null, sourceHeaders: null, embeddedComponents: [],
+  };
+  issue('VENDORED_SOURCE_PROVENANCE_REVIEW', 'local:shadcn-vue',
+    'The supplied local shadcn-vue MIT license is retained byte-for-byte. No upstream version/revision is recorded for the editable component source; verify its provenance and modifications in the final source review. This is not a claim of an independently verified upstream snapshot.');
+  add(record.notice, [MARKER, '', '# shadcn-vue — locally maintained Vue components', '',
+    '- Component source: `src/components/ui` (vendored and editable, not an npm dependency).',
+    '- Upstream version/revision: not recorded; do not infer it from the application or Reka UI version.',
+    '- Declared license: MIT, as stated in the supplied original local license.',
+    `- Original local source: \`${source}\`.`,
+    `- [Original SHADCN_LICENSE.txt](files/SHADCN_LICENSE.txt) — SHA-256 \`${sha(bytes)}\`.`, '',
+    'The original copyright, permission and warranty terms are copied without editing. This local source is not relicensed by the application MIT declaration. Only the supplied license text is copied here, not component implementation code.', '',
+    '## Review required', '',
+    'Verify the upstream provenance and local modifications against the final component sources. No exact upstream revision is supplied or asserted by this offline collection.', '',
+  ].join('\n'));
+  inventory.push(record);
+}
+
 function npmPackages() {
   const pkg = readJson(path.join(ROOT, 'package.json'));
   const lock = readJson(path.join(ROOT, 'package-lock.json'));
   if (![2, 3].includes(lock.lockfileVersion) || !lock.packages?.['']) throw new Error('package-lock v2/v3 with a packages map is required.');
-  for (const field of ['dependencies', 'optionalDependencies']) {
+  for (const field of ['dependencies', 'optionalDependencies', 'devDependencies']) {
     if (json(pkg[field] ?? {}) !== json(lock.packages[''][field] ?? {})) throw new Error(`package.json and package-lock root ${field} differ.`);
   }
   const selected = new Set();
@@ -450,14 +495,14 @@ function npmPackages() {
     if (optional) return null;
     throw new Error(`Production npm dependency not found in lock: ${name}`);
   }
-  function visit(key) {
+  function visit(key, distributedCss = false) {
     if (!key || selected.has(key)) return;
     relativePath(`notices/${key}`);
     const locked = lock.packages[key];
-    if (locked.link) throw new Error(`Linked npm production package requires explicit review: ${key}`);
+    if (locked.link) throw new Error(`Linked npm package requires explicit review: ${key}`);
     const installedPath = path.join(ROOT, ...key.split('/'));
     if (!lstat(installedPath)) {
-      issue('UNKNOWN_UNINSTALLED_NPM_PACKAGE', `npm:${key}`, 'Locked production/optional dependency is not installed; no license text was available.');
+      issue('UNKNOWN_UNINSTALLED_NPM_PACKAGE', `npm:${key}`, 'Locked production/optional or distributed-CSS dependency is not installed; no license text was available.');
       return;
     }
     if (fs.lstatSync(installedPath).isSymbolicLink()) throw new Error(`Refusing linked npm package: ${key}`);
@@ -466,7 +511,7 @@ function npmPackages() {
     if (!real.startsWith(`${nodeModules}${path.sep}`)) throw new Error(`npm package escapes node_modules: ${key}`);
     const installed = readJson(path.join(real, 'package.json'));
     if (installed.version !== locked.version) throw new Error(`Installed/locked npm version mismatch: ${key}`);
-    if (locked.dev) throw new Error(`Production traversal reached a dev-only npm lock entry: ${key}`);
+    if (locked.dev && !distributedCss) throw new Error(`Production traversal reached a dev-only npm lock entry: ${key}`);
     selected.add(key);
     const license = licenseExpression(installed.license) ?? licenseExpression(locked.license);
     if (installed.license && locked.license && licenseExpression(installed.license) !== licenseExpression(locked.license)) issue('NPM_LICENSE_METADATA_MISMATCH', `npm:${installed.name}@${installed.version}`, 'Installed and locked license declarations differ; inspect original terms.');
@@ -474,13 +519,23 @@ function npmPackages() {
       root: real, source: locked.resolved ?? key, repository: typeof installed.repository === 'object' ? installed.repository.url : installed.repository,
       authors: [...declaredPeople(installed.author), ...declaredPeople(installed.contributors)], license,
       licenseFile: /^SEE LICEN[CS]E IN (.+)$/i.exec(license ?? '')?.[1],
-      relationship: 'production dependency graph (dependencies/optionalDependencies and installed peers); npm devDependencies excluded' });
-    for (const name of Object.keys(locked.dependencies ?? {}).sort(cmp)) visit(resolve(key, name));
-    for (const name of Object.keys(locked.optionalDependencies ?? {}).sort(cmp)) visit(resolve(key, name, true));
-    for (const name of Object.keys(locked.peerDependencies ?? {}).sort(cmp)) visit(resolve(key, name, Boolean(locked.peerDependenciesMeta?.[name]?.optional)));
+      relationship: distributedCss
+        ? 'distributed CSS source graph; Tailwind is declared in devDependencies but its imported stylesheet contributes to application assets; compiler/plugin executables are not implied to ship'
+        : 'production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded' });
+    for (const name of Object.keys(locked.dependencies ?? {}).sort(cmp)) visit(resolve(key, name), distributedCss);
+    for (const name of Object.keys(locked.optionalDependencies ?? {}).sort(cmp)) visit(resolve(key, name, true), distributedCss);
+    for (const name of Object.keys(locked.peerDependencies ?? {}).sort(cmp)) visit(resolve(key, name, Boolean(locked.peerDependenciesMeta?.[name]?.optional)), distributedCss);
   }
   for (const name of Object.keys(pkg.dependencies ?? {}).sort(cmp)) visit(resolve('', name));
   for (const name of Object.keys(pkg.optionalDependencies ?? {}).sort(cmp)) visit(resolve('', name, true));
+  // Classification is based on the application import, not just npm's dev flag.
+  // Importing Tailwind CSS can distribute its stylesheet/preflight; importing
+  // the Vite plugin does not mean the plugin/native compiler itself is shipped.
+  const stylesheet = fs.readFileSync(sourceFile(ROOT, 'src/styles/workbench.css'), 'utf8');
+  if (/@import\s+["']tailwindcss(?:\/[^"']*)?["']/.test(stylesheet)) {
+    if (!pkg.dependencies?.tailwindcss && !pkg.devDependencies?.tailwindcss) throw new Error('Imported Tailwind CSS must be declared as a locked direct dependency.');
+    visit(resolve('', 'tailwindcss'), true);
+  }
 }
 
 function cargoPackages() {
@@ -551,16 +606,20 @@ function generateIndex(hashes) {
   const unknown = issues.filter(i => i.code.startsWith('UNKNOWN') || i.code.startsWith('MISSING') || i.code.startsWith('UNSCANNED'));
   const npm = inventory.filter(p => p.ecosystem === 'npm');
   const cargo = inventory.filter(p => p.ecosystem === 'cargo');
+  const local = inventory.filter(p => p.ecosystem === 'local');
   const lines = [MARKER, '', '# Third-party notices — QGitGraph', '',
     'QGitGraph is an independent product. It does not reuse the restricted upstream GitGraph implementation or assets and is not affiliated with, sponsored by, or endorsed by that upstream project. No upstream GitGraph license is used as this application\'s license.', '',
     '**Application license:** QGitGraph-owned source code is licensed under the MIT License; see [LICENSE](LICENSE). Third-party components are not relicensed by that choice: their original copyrights, license alternatives, notices and covered-source rights remain with their respective holders.', '',
     '## Collection scope and limits', '',
     `- Target: \`${target}\`; default Cargo manifest features as reported by offline locked metadata.`,
-    `- npm: **${npm.length}** installed, locked production packages; starts at package.json dependencies/optionalDependencies, follows transitive and installed peer dependencies. npm dev tools (Vite, TypeScript, Vitest, Tauri CLI, etc.) are intentionally outside this collection. Bundled helpers inside production packages are inspected separately.`,
+    `- npm: **${npm.length}** installed, locked packages; starts at package.json dependencies/optionalDependencies, follows transitive and installed peer dependencies, and explicitly includes Tailwind CSS imported by \`src/styles/workbench.css\` even though it is a devDependency. This is a conservative package graph, NOT an exact shipped runtime inventory. Vue compiler/server-renderer packages, type-only packages and installed optional TypeScript peers can be reachable without being distributed.`,
+    '- Dev-only tool roots (Vite/plugin-vue, vue-tsc, Vitest, Tauri CLI, Tailwind Vite plugin/native compiler, etc.) are not traversed merely because they are installed. Tailwind stylesheet/preflight output is the explicit distribution exception; its original package license is retained. No build or binary/CSS reachability analysis was performed. Bundled helpers inside selected packages are inspected separately.',
+    `- Local source: **${local.length}** editable shadcn-vue component collection in \`src/components/ui\`; the supplied original \`src/components/SHADCN_LICENSE.txt\` is copied byte-for-byte and covered by both input and generated ownership hashes. An exact upstream component revision is not asserted.`,
     `- Cargo: **${cargo.length}** third-party packages reachable through non-dev edges in \`cargo metadata --locked --offline --format-version=1 --filter-platform ${target}\`. Includes build dependencies, proc macros, their transitive dependencies, and feature-unified metadata. Root/workspace application code is not assigned a license here.`,
     '- **Conservatively over-inclusive:** normal/build-path labels are graph reachability, not evidence that a crate is linked or distributed. Metadata filtering/feature unification can retain packages/features that the final artifact does not use; no compilation or binary reachability analysis was performed. Dev-only paths are not traversed. This is NOT an exact runtime bill of materials.',
     '- Original LICENSE/LICENCE/COPYING/NOTICE/COPYRIGHT/AUTHORS/UNLICENSE/PATENTS files, including nested legal files, are copied byte-for-byte. Original source copyright/license comments are retained separately. Metadata author names are labelled as authors, never invented as copyright holders.',
     '- No license language is synthesized or guessed from SPDX. For six exact pinned crates that omit standalone text, verified official upstream or explicitly referenced Mozilla license-steward text is supplied with source URL, packaged revision and SHA-256. Original Microsoft SDK LICENSE/NOTICE is separately retained after matching the static loader bytes. All future unmatched gaps remain UNKNOWN. Keeping license alternatives does not choose a license for the application.',
+    '- MIT, Apache-2.0, ISC, BSD, 0BSD, MPL and other declarations are retained as originally supplied, not replaced by the application MIT license. Lucide remains pinned at the installed locked version; its original combined LICENSE retains both Lucide ISC and the complete Feather/Cole Bemis MIT grant and warranty. Local shadcn-vue copyright and permission text remains separate from QGitGraph-owned code.',
     '- No installs, network access, package lifecycle scripts, Cargo build, or package code execution are used. Only Node built-ins and offline Cargo metadata are required.', '',
     '## Redistribution status — review required', '',
     `**NOT release clearance. ${unknown.length} missing/unknown/unscanned-text finding(s); ${issues.length} total package review finding(s).** File collection is not legal advice or a warranty of compliance. All obligations must be checked against the actual Windows artifact and the original terms.`, '',
@@ -594,8 +653,8 @@ function writeOutputs(previous, hashes) {
   if (json(now) !== json(previous)) throw new Error('Notices changed during collection; refusing to overwrite.');
   const ownedFiles = Object.fromEntries([...outputs].sort(([a], [b]) => cmp(a, b)).map(([file, bytes]) => [file, sha(bytes)]));
   add(MANIFEST, json({ schemaVersion: SCHEMA, generator: GENERATOR, target,
-    scope: 'npm production graph + conservative non-dev Windows Cargo metadata closure including build/proc-macro dependencies; not exact runtime',
-    legalClearance: false, inputs: hashes, counts: { npm: inventory.filter(p => p.ecosystem === 'npm').length, cargo: inventory.filter(p => p.ecosystem === 'cargo').length },
+    scope: 'npm production/installed-peer graph + imported Tailwind CSS source + local shadcn-vue components + conservative non-dev Windows Cargo metadata closure including build/proc-macro dependencies; not exact runtime',
+    legalClearance: false, inputs: hashes, counts: { npm: inventory.filter(p => p.ecosystem === 'npm').length, cargo: inventory.filter(p => p.ecosystem === 'cargo').length, local: inventory.filter(p => p.ecosystem === 'local').length },
     findings: issues, packages: inventory, ownedFiles }));
   const stale = Object.keys(previous?.ownedFiles ?? {}).filter(file => !outputs.has(file));
   if (check) {
@@ -647,6 +706,7 @@ function writeOutputs(previous, hashes) {
 try {
   const previous = inspectOwnedOutput();
   const hashes = inputHashes();
+  localComponents();
   npmPackages();
   cargoPackages();
   inventory.sort((a, b) => cmp(a.ecosystem, b.ecosystem) || cmp(a.name, b.name) || cmp(a.version, b.version) || cmp(a.identity, b.identity));

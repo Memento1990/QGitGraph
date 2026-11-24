@@ -1,0 +1,79 @@
+/* History details own geometry; legacy/working DetailsPane styles stay unchanged. */
+.details-pane.history-details {
+  display: flex;
+  flex: none;
+  width: 100%;
+  height: var(--history-detail-height, 320px);
+  min-height: 190px;
+  max-height: none;
+  min-width: 0;
+  overflow: visible;
+  box-sizing: border-box;
+}
+.details-pane.history-details > .detail-header { height: 31px; min-height: 31px; box-sizing: border-box; flex: 0 0 31px; flex-wrap: nowrap; overflow: hidden; }
+.details-pane.history-details .detail-title { flex: 1 1 auto; }
+.details-pane.history-details .detail-header > .button { flex-shrink: 0; }
+.details-pane.history-details > .detail-body {
+  display: grid;
+  grid-template-columns: minmax(190px, clamp(190px, var(--detail-info-width, 55%), calc(100% - 195px))) 5px minmax(190px, 1fr);
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  align-items: stretch;
+  flex: none;
+  min-height: 153px;
+  overflow: visible;
+}
+.details-pane.history-details .commit-metadata {
+  min-width: 0;
+  min-height: 0;
+  max-height: none;
+  padding: 10px 14px;
+  overflow: visible;
+  border: 0;
+  box-sizing: border-box;
+}
+.history-detail-info-content { min-width: 0; }
+.history-detail-info-content .detail-subject { margin: 0 0 9px; line-height: 1.55; overflow-wrap: anywhere; }
+.history-detail-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 10px; margin: 0 0 8px; font-size: .88rem; }
+.history-detail-facts dt { color: var(--text-muted); }
+.history-detail-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.history-detail-facts .parent-row { margin: 0; }
+.history-detail-signature { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.history-detail-message { margin-top: 9px; font-size: .92rem; line-height: 1.65; overflow-wrap: anywhere; }
+.history-detail-message[hidden] { display: none; }
+.history-message-toggle { margin-top: 5px; padding-inline: 0; color: var(--accent); font-size: .88rem; }
+.details-pane.history-details .files-pane {
+  display: flex;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--border);
+  box-sizing: border-box;
+}
+.details-pane.history-details .file-toolbar { flex-wrap: wrap; flex: 0 0 auto; min-height: 32px; box-sizing: border-box; }
+.history-tree-hint { font-size: .77rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.details-pane.history-details .file-list { flex: 1 1 0; min-height: 0; min-width: 0; padding: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; }
+.details-pane.history-details .file-rows { width: max-content; min-width: 100%; }
+.details-pane.history-details .file-row,
+.details-pane.history-details .file-folder { height: 24px; min-height: 24px; width: 100%; box-sizing: border-box; white-space: nowrap; }
+.details-pane.history-details .file-name { overflow: visible; text-overflow: clip; }
+.details-pane.history-details .file-stats,
+.details-pane.history-details .file-status { flex-shrink: 0; }
+.details-pane.history-details .history-detail-width-resizer { display: block; min-height: 100%; width: 5px; }
+.details-pane.history-details .history-detail-height-resizer { flex: 0 0 6px; height: 6px; box-sizing: border-box; }
+.details-pane.history-details .resize-handle { touch-action: none; }
+.details-pane.history-details:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
+.inline-detail-slot:has(.history-details) { overflow: visible; min-width: 0; box-sizing: border-box; }
+.inline-detail-cell:has(> .history-details) { min-width: 0; max-width: 100%; }
+.inline-detail-cell > .details-pane.history-details { width: 100%; max-width: 100%; height: var(--history-detail-height, 320px); min-height: 190px; }
+@media (forced-colors: active) {
+  .history-message-toggle { color: LinkText; }
+  .history-detail-width-resizer:focus-visible,
+  .history-detail-height-resizer:focus-visible { outline: 1px solid Highlight; }
+}

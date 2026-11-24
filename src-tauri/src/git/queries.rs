@@ -28,6 +28,18 @@ impl GitService {
         request_id: &str,
     ) -> Result<RepositorySnapshot> {
         let _scope = self.request_scope(request_id)?;
+        self.check_repository_authorization(repo, request_id, false)?;
+        // Porcelain keeps paths/XY but not staged OIDs. Capture the actual
+        // parent index before any parallel reads so unchanged status cannot
+        // authorize unseen staged content. These plumbing reads never refresh
+        // or replace the user's index; bare repositories have no index.
+        let index = if repo.bare {
+            None
+        } else {
+            let token = self.working_index(repo, request_id).await?;
+            self.check_repository_authorization(repo, request_id, false)?;
+            Some(token)
+        };
         let (references, working, remotes) = tokio::join!(
             self.reference_state(repo, request_id),
             self.working_state(repo, request_id),
@@ -36,6 +48,17 @@ impl GitService {
         let (refs, stashes) = references?;
         let working = working?;
         let remotes = remotes?;
+        self.check_repository_authorization(repo, request_id, false)?;
+        if let Some(expected) = &index {
+            let latest = self.working_index(repo, request_id).await?;
+            self.check_repository_authorization(repo, request_id, false)?;
+            if expected != &latest {
+                return Err(AppError::new(
+                    "STALE_INDEX",
+                    "The index changed while reading the repository snapshot. Refresh and review before retrying.",
+                ));
+            }
+        }
         let mut repository = repo.clone();
         repository.head = working.head.clone();
         repository.branch = working.branch.clone();
@@ -54,6 +77,7 @@ impl GitService {
             &sorted_working,
             &stashes,
             &remotes,
+            &index,
         ))
         .map_err(|error| AppError::new("SERIALIZE", error.to_string()))?;
         let mut hash = 0xcbf29ce484222325u64;
@@ -61,6 +85,7 @@ impl GitService {
             hash ^= u64::from(byte);
             hash = hash.wrapping_mul(0x100000001b3);
         }
+        self.check_repository_authorization(repo, request_id, false)?;
         Ok(RepositorySnapshot {
             repository,
             refs,
@@ -322,6 +347,7 @@ impl GitService {
         repo: &Repository,
         request_id: &str,
     ) -> Result<Vec<SubmoduleInfo>> {
+        let _request = self.request_scope(request_id)?;
         let (gitlinks, modules_oid) = if repo.bare {
             let Some(head) = self.optional_head(repo, request_id).await? else {
                 return Ok(Vec::new());
@@ -459,12 +485,45 @@ impl GitService {
             };
             if !repo.bare {
                 if let Some(root) = submodule_root(repo, &path)? {
-                    let mut nested = repo.clone();
-                    nested.path = root.to_string_lossy().into_owned();
-                    nested.bare = false;
+                    // 子仓只读探测有独立身份表，但共用父请求取消令牌与进程槽。
+                    // 绝不把父仓的 trusted/epoch 克隆为子仓原生授权。
+                    let path = crate::state::display_path(&root);
+                    let mut nested = Repository {
+                        id: String::new(),
+                        path: path.clone(),
+                        name: String::new(),
+                        git_dir: String::new(),
+                        common_dir: String::new(),
+                        head: None,
+                        branch: None,
+                        trusted: false,
+                        bare: false,
+                    };
+                    let discovery_service = self.nested_probe_service(request_id)?;
+                    let discovered = discovery_service
+                        .run(
+                            &nested,
+                            request_id,
+                            vec![
+                                "rev-parse".into(),
+                                "--path-format=absolute".into(),
+                                "--absolute-git-dir".into(),
+                                "--git-common-dir".into(),
+                            ],
+                            false,
+                        )
+                        .await?;
+                    let directories: Vec<_> = discovered.lines().collect();
+                    if directories.len() != 2 {
+                        return Err(invalid("Invalid submodule discovery output"));
+                    }
+                    nested.id = path;
+                    nested.git_dir = directories[0].into();
+                    nested.common_dir = directories[1].into();
+                    let nested_service = self.nested_read_service(&nested, request_id)?;
                     // rev-parse must identify this exact worktree, not discover its
                     // superproject when the submodule has not been initialized.
-                    let top = self
+                    let top = nested_service
                         .run(
                             &nested,
                             request_id,
@@ -478,22 +537,8 @@ impl GitService {
                         ));
                     }
                     info.initialized = true;
-                    info.head = self.optional_head(&nested, request_id).await?;
-                    let status = self
-                        .run_bytes(
-                            &nested,
-                            request_id,
-                            vec![
-                                "status".into(),
-                                "--porcelain=v2".into(),
-                                "-z".into(),
-                                "--untracked-files=all".into(),
-                                "--ignore-submodules=all".into(),
-                            ],
-                            false,
-                        )
-                        .await?;
-                    let status = parse::working_state(&status)?;
+                    info.head = nested_service.optional_head(&nested, request_id).await?;
+                    let status = nested_service.working_state(&nested, request_id).await?;
                     info.untracked = status.files.iter().any(|file| file.status == "?");
                     info.modified = info.head.as_deref() != Some(&index_oid)
                         || status.files.iter().any(|file| file.status != "?");
@@ -521,7 +566,7 @@ fn unscoped_config(bytes: &[u8]) -> Result<Vec<parse::ConfigEntry>> {
     parse::config(&scoped)
 }
 
-fn submodule_root(repo: &Repository, relative: &str) -> Result<Option<PathBuf>> {
+pub(super) fn submodule_root(repo: &Repository, relative: &str) -> Result<Option<PathBuf>> {
     validate_path(relative)?;
     let base = fs::canonicalize(&repo.path).map_err(io_error)?;
     let mut current = base.clone();

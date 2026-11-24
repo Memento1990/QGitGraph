@@ -2,17 +2,20 @@
   "schemaVersion": 1,
   "generator": "QGitGraph/scripts/generate-notices.mjs",
   "target": "x86_64-pc-windows-msvc",
-  "scope": "npm production graph + conservative non-dev Windows Cargo metadata closure including build/proc-macro dependencies; not exact runtime",
+  "scope": "npm production/installed-peer graph + imported Tailwind CSS source + local shadcn-vue components + conservative non-dev Windows Cargo metadata closure including build/proc-macro dependencies; not exact runtime",
   "legalClearance": false,
   "inputs": {
-    "package.json": "9f1edde9257798741e01e8c82d34c7e8bcaa1fa0e019aeabde1d70344d4d4abd",
-    "package-lock.json": "4b3537d5fb0b1e4b961cc2d3ebd7d278eba3bc5f3f070f900c47cac76aad3c47",
-    "src-tauri/Cargo.toml": "9edcdf9ec229b63a5e7881468a73f27feaedc1d9b759539e5fdc52cba9aeabe2",
-    "src-tauri/Cargo.lock": "f467c49a934cfb3081a547edde866ff3948b0abbe5d662878e5909c60aab1880"
+    "package.json": "46c45e7a70dad18ac762f5219f81cc79b62db3ec20e2b11095e5869717880641",
+    "package-lock.json": "a94597fa2511cde009686c8dcbc8a177046d3ea79ee58e0f12123962143f1b06",
+    "src-tauri/Cargo.toml": "9436bcb94a96d1187f6fbcd96b732a4304868256b8a0f69ccb37c52d9c7d22a8",
+    "src-tauri/Cargo.lock": "9689f509fb9caf328ee9789dd2c9b246951abaf469cbc2b52345fa3adcc1b525",
+    "src/components/SHADCN_LICENSE.txt": "69f84f4ad77be299dbf42d03d7fd862ab3ab05546c6e573c6c7c875b0168a94d",
+    "src/styles/workbench.css": "83c874df9a593824118e5dc2680144ee0138aac26629ec8c4f153a879ab500a0"
   },
   "counts": {
-    "npm": 1,
-    "cargo": 262
+    "npm": 49,
+    "cargo": 262,
+    "local": 1
   },
   "findings": [
     {
@@ -44,6 +47,11 @@
       "code": "SOURCE_AVAILABILITY_REVIEW",
       "package": "cargo:selectors@0.38.0",
       "message": "Exact locked source archive is supplied with this notices tree and a recipient-facing source-availability guide. Confirm the release includes both, preserves source terms, and that no patched covered files differ from this version. This does not select MPL for application files or establish legal clearance."
+    },
+    {
+      "code": "VENDORED_SOURCE_PROVENANCE_REVIEW",
+      "package": "local:shadcn-vue",
+      "message": "The supplied local shadcn-vue MIT license is retained byte-for-byte. No upstream version/revision is recorded for the editable component source; verify its provenance and modifications in the final source review. This is not a claim of an independently verified upstream snapshot."
     }
   ],
   "packages": [
@@ -9557,6 +9565,420 @@
       "embeddedComponents": []
     },
     {
+      "ecosystem": "local",
+      "name": "shadcn-vue (locally maintained components)",
+      "version": "unversioned",
+      "identity": "src/components/ui",
+      "source": "src/components/SHADCN_LICENSE.txt",
+      "repository": null,
+      "declaredAuthors": [],
+      "declaredLicense": "MIT",
+      "relationship": "vendored editable Vue component source in src/components/ui; not an installed npm package",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/local/shadcn-vue/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "src/components/SHADCN_LICENSE.txt",
+          "output": "notices/local/shadcn-vue/files/SHADCN_LICENSE.txt",
+          "sha256": "69f84f4ad77be299dbf42d03d7fd862ab3ab05546c6e573c6c7c875b0168a94d",
+          "bytes": 1063
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@babel/helper-string-parser",
+      "version": "7.29.15",
+      "identity": "node_modules/@babel/helper-string-parser",
+      "source": "https://registry.npmmirror.com/@babel/helper-string-parser/-/helper-string-parser-7.29.15.tgz",
+      "repository": "https://github.com/babel/babel.git",
+      "declaredAuthors": [
+        "The Babel Team (https://babel.dev/team)"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_babel_helper-string-parser-7.29.15-8fc1a8f3c7/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_babel_helper-string-parser-7.29.15-8fc1a8f3c7/files/001-LICENSE",
+          "sha256": "117da2af0d4ce0fe1c8e19b5cff9dcd806adf973d328d27b11d4448c4ff24f76",
+          "bytes": 1106
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@babel/helper-validator-identifier",
+      "version": "7.29.7",
+      "identity": "node_modules/@babel/helper-validator-identifier",
+      "source": "https://registry.npmmirror.com/@babel/helper-validator-identifier/-/helper-validator-identifier-7.29.7.tgz",
+      "repository": "https://github.com/babel/babel.git",
+      "declaredAuthors": [
+        "The Babel Team (https://babel.dev/team)"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_babel_helper-validator-identifier-7.29.7-78632d56d2/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_babel_helper-validator-identifier-7.29.7-78632d56d2/files/001-LICENSE",
+          "sha256": "117da2af0d4ce0fe1c8e19b5cff9dcd806adf973d328d27b11d4448c4ff24f76",
+          "bytes": 1106
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@babel/parser",
+      "version": "7.29.15",
+      "identity": "node_modules/@babel/parser",
+      "source": "https://registry.npmmirror.com/@babel/parser/-/parser-7.29.15.tgz",
+      "repository": "https://github.com/babel/babel.git",
+      "declaredAuthors": [
+        "The Babel Team (https://babel.dev/team)"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_babel_parser-7.29.15-abdaa5046e/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_babel_parser-7.29.15-abdaa5046e/files/001-LICENSE",
+          "sha256": "2e97627cb278aa7556fb9e8817368302301a595b6c7582512b8d74c57b773652",
+          "bytes": 1086
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@babel/types",
+      "version": "7.29.15",
+      "identity": "node_modules/@babel/types",
+      "source": "https://registry.npmmirror.com/@babel/types/-/types-7.29.15.tgz",
+      "repository": "https://github.com/babel/babel.git",
+      "declaredAuthors": [
+        "The Babel Team (https://babel.dev/team)"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_babel_types-7.29.15-a87a4414a1/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_babel_types-7.29.15-a87a4414a1/files/001-LICENSE",
+          "sha256": "117da2af0d4ce0fe1c8e19b5cff9dcd806adf973d328d27b11d4448c4ff24f76",
+          "bytes": 1106
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@floating-ui/core",
+      "version": "1.8.0",
+      "identity": "node_modules/@floating-ui/core",
+      "source": "https://registry.npmmirror.com/@floating-ui/core/-/core-1.8.0.tgz",
+      "repository": "https://github.com/floating-ui/floating-ui.git",
+      "declaredAuthors": [
+        "atomiks"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_floating-ui_core-1.8.0-46ec348427/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_floating-ui_core-1.8.0-46ec348427/files/001-LICENSE",
+          "sha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+          "bytes": 1089
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@floating-ui/dom",
+      "version": "1.8.0",
+      "identity": "node_modules/@floating-ui/dom",
+      "source": "https://registry.npmmirror.com/@floating-ui/dom/-/dom-1.8.0.tgz",
+      "repository": "https://github.com/floating-ui/floating-ui.git",
+      "declaredAuthors": [
+        "atomiks"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_floating-ui_dom-1.8.0-f505c35819/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_floating-ui_dom-1.8.0-f505c35819/files/001-LICENSE",
+          "sha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+          "bytes": 1089
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@floating-ui/utils",
+      "version": "0.2.12",
+      "identity": "node_modules/@floating-ui/utils",
+      "source": "https://registry.npmmirror.com/@floating-ui/utils/-/utils-0.2.12.tgz",
+      "repository": "https://github.com/floating-ui/floating-ui.git",
+      "declaredAuthors": [
+        "atomiks"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_floating-ui_utils-0.2.12-09bd0df886/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_floating-ui_utils-0.2.12-09bd0df886/files/001-LICENSE",
+          "sha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+          "bytes": 1089
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@floating-ui/vue",
+      "version": "2.0.1",
+      "identity": "node_modules/@floating-ui/vue",
+      "source": "https://registry.npmmirror.com/@floating-ui/vue/-/vue-2.0.1.tgz",
+      "repository": "https://github.com/floating-ui/floating-ui.git",
+      "declaredAuthors": [
+        "lozinsky"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_floating-ui_vue-2.0.1-d85612b0cf/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_floating-ui_vue-2.0.1-d85612b0cf/files/001-LICENSE",
+          "sha256": "46c97b198a78dc0befc1a823ba7bcdf993726a887d0215edcce575a61b947115",
+          "bytes": 1081
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@internationalized/date",
+      "version": "3.12.4",
+      "identity": "node_modules/@internationalized/date",
+      "source": "https://registry.npmmirror.com/@internationalized/date/-/date-3.12.4.tgz",
+      "repository": "https://github.com/adobe/react-spectrum/tree/main/packages/@internationalized/date",
+      "declaredAuthors": [],
+      "declaredLicense": "Apache-2.0",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_internationalized_date-3.12.4-b2f4a941eb/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_internationalized_date-3.12.4-b2f4a941eb/files/001-LICENSE",
+          "sha256": "7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84",
+          "bytes": 11335
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": "notices/npm/_internationalized_date-3.12.4-b2f4a941eb/SOURCE_HEADERS.txt",
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@internationalized/number",
+      "version": "3.6.9",
+      "identity": "node_modules/@internationalized/number",
+      "source": "https://registry.npmmirror.com/@internationalized/number/-/number-3.6.9.tgz",
+      "repository": "https://github.com/adobe/react-spectrum",
+      "declaredAuthors": [],
+      "declaredLicense": "Apache-2.0",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_internationalized_number-3.6.9-20dcb5e7e7/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_internationalized_number-3.6.9-20dcb5e7e7/files/001-LICENSE",
+          "sha256": "7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84",
+          "bytes": 11335
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": "notices/npm/_internationalized_number-3.6.9-20dcb5e7e7/SOURCE_HEADERS.txt",
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@jridgewell/sourcemap-codec",
+      "version": "1.6.0",
+      "identity": "node_modules/@jridgewell/sourcemap-codec",
+      "source": "https://registry.npmmirror.com/@jridgewell/sourcemap-codec/-/sourcemap-codec-1.6.0.tgz",
+      "repository": "git+https://github.com/jridgewell/sourcemaps.git",
+      "declaredAuthors": [
+        "Justin Ridgewell <justin@ridgewell.name>"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_jridgewell_sourcemap-codec-1.6.0-11d785d1ad/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_jridgewell_sourcemap-codec-1.6.0-11d785d1ad/files/001-LICENSE",
+          "sha256": "769d154fbde32a915af110b1123650bc79f4cbe675acc66e005265bf069c6c6c",
+          "bytes": 1080
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@swc/helpers",
+      "version": "0.5.24",
+      "identity": "node_modules/@swc/helpers",
+      "source": "https://registry.npmmirror.com/@swc/helpers/-/helpers-0.5.24.tgz",
+      "repository": "git+https://github.com/swc-project/swc.git",
+      "declaredAuthors": [
+        "강동윤 <kdy1997.dev@gmail.com>"
+      ],
+      "declaredLicense": "Apache-2.0",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_swc_helpers-0.5.24-bab3650594/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_swc_helpers-0.5.24-bab3650594/files/001-LICENSE",
+          "sha256": "d96eba1f1881334d50ffc144276dfa98e147a415e7c591ecdfcb81680361dc91",
+          "bytes": 10836
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@tanstack/virtual-core",
+      "version": "3.19.13",
+      "identity": "node_modules/@tanstack/virtual-core",
+      "source": "https://registry.npmmirror.com/@tanstack/virtual-core/-/virtual-core-3.19.13.tgz",
+      "repository": "git+https://github.com/TanStack/virtual.git",
+      "declaredAuthors": [
+        "Tanner Linsley"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_tanstack_virtual-core-3.19.13-c2babfc43e/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_tanstack_virtual-core-3.19.13-c2babfc43e/files/001-LICENSE",
+          "sha256": "a405ee70c632bb938acb7ac5f210e814409b3760ea9d2329d8ed8ffcfd11a0e7",
+          "bytes": 1079
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@tanstack/vue-virtual",
+      "version": "3.13.54",
+      "identity": "node_modules/@tanstack/vue-virtual",
+      "source": "https://registry.npmmirror.com/@tanstack/vue-virtual/-/vue-virtual-3.13.54.tgz",
+      "repository": "git+https://github.com/TanStack/virtual.git",
+      "declaredAuthors": [
+        "Tanner Linsley"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_tanstack_vue-virtual-3.13.54-372fb83298/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_tanstack_vue-virtual-3.13.54-372fb83298/files/001-LICENSE",
+          "sha256": "a405ee70c632bb938acb7ac5f210e814409b3760ea9d2329d8ed8ffcfd11a0e7",
+          "bytes": 1079
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
       "ecosystem": "npm",
       "name": "@tauri-apps/api",
       "version": "2.12.5",
@@ -9567,7 +9989,7 @@
         "Tauri Programme within The Commons Conservancy"
       ],
       "declaredLicense": "Apache-2.0 OR MIT",
-      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); npm devDependencies excluded",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
       "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
       "vcs": null,
       "notice": "notices/npm/_tauri-apps_api-2.12.5-55f3f9b4d4/NOTICE.md",
@@ -9604,10 +10026,1017 @@
           "license": "Original Microsoft permission/warranty text retained; no standalone version or SPDX identifier inferred."
         }
       ]
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@types/web-bluetooth",
+      "version": "0.0.21",
+      "identity": "node_modules/@types/web-bluetooth",
+      "source": "https://registry.npmmirror.com/@types/web-bluetooth/-/web-bluetooth-0.0.21.tgz",
+      "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+      "declaredAuthors": [
+        "Uri Shaked",
+        "Xavier Lozinguez",
+        "Rob Moran",
+        "David Bjerremose",
+        "Nathan Rajlich"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_types_web-bluetooth-0.0.21-a90f86c8e5/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_types_web-bluetooth-0.0.21-a90f86c8e5/files/001-LICENSE",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+          "bytes": 1141
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@vue/compiler-core",
+      "version": "3.5.46",
+      "identity": "node_modules/@vue/compiler-core",
+      "source": "https://registry.npmmirror.com/@vue/compiler-core/-/compiler-core-3.5.46.tgz",
+      "repository": "git+https://github.com/vuejs/core.git",
+      "declaredAuthors": [
+        "Evan You"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_vue_compiler-core-3.5.46-ff62347dde/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_vue_compiler-core-3.5.46-ff62347dde/files/001-LICENSE",
+          "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+          "bytes": 1091
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@vue/compiler-dom",
+      "version": "3.5.46",
+      "identity": "node_modules/@vue/compiler-dom",
+      "source": "https://registry.npmmirror.com/@vue/compiler-dom/-/compiler-dom-3.5.46.tgz",
+      "repository": "git+https://github.com/vuejs/core.git",
+      "declaredAuthors": [
+        "Evan You"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_vue_compiler-dom-3.5.46-15345def7b/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_vue_compiler-dom-3.5.46-15345def7b/files/001-LICENSE",
+          "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+          "bytes": 1091
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@vue/compiler-sfc",
+      "version": "3.5.46",
+      "identity": "node_modules/@vue/compiler-sfc",
+      "source": "https://registry.npmmirror.com/@vue/compiler-sfc/-/compiler-sfc-3.5.46.tgz",
+      "repository": "git+https://github.com/vuejs/core.git",
+      "declaredAuthors": [
+        "Evan You"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_vue_compiler-sfc-3.5.46-3bdfda0f93/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_vue_compiler-sfc-3.5.46-3bdfda0f93/files/001-LICENSE",
+          "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+          "bytes": 1091
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@vue/compiler-ssr",
+      "version": "3.5.46",
+      "identity": "node_modules/@vue/compiler-ssr",
+      "source": "https://registry.npmmirror.com/@vue/compiler-ssr/-/compiler-ssr-3.5.46.tgz",
+      "repository": "git+https://github.com/vuejs/core.git",
+      "declaredAuthors": [
+        "Evan You"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_vue_compiler-ssr-3.5.46-6b6c884496/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_vue_compiler-ssr-3.5.46-6b6c884496/files/001-LICENSE",
+          "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+          "bytes": 1091
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@vue/reactivity",
+      "version": "3.5.46",
+      "identity": "node_modules/@vue/reactivity",
+      "source": "https://registry.npmmirror.com/@vue/reactivity/-/reactivity-3.5.46.tgz",
+      "repository": "git+https://github.com/vuejs/core.git",
+      "declaredAuthors": [
+        "Evan You"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_vue_reactivity-3.5.46-c0b42a05ae/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_vue_reactivity-3.5.46-c0b42a05ae/files/001-LICENSE",
+          "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+          "bytes": 1091
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@vue/runtime-core",
+      "version": "3.5.46",
+      "identity": "node_modules/@vue/runtime-core",
+      "source": "https://registry.npmmirror.com/@vue/runtime-core/-/runtime-core-3.5.46.tgz",
+      "repository": "git+https://github.com/vuejs/core.git",
+      "declaredAuthors": [
+        "Evan You"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_vue_runtime-core-3.5.46-d0ee50fbaa/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_vue_runtime-core-3.5.46-d0ee50fbaa/files/001-LICENSE",
+          "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+          "bytes": 1091
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@vue/runtime-dom",
+      "version": "3.5.46",
+      "identity": "node_modules/@vue/runtime-dom",
+      "source": "https://registry.npmmirror.com/@vue/runtime-dom/-/runtime-dom-3.5.46.tgz",
+      "repository": "git+https://github.com/vuejs/core.git",
+      "declaredAuthors": [
+        "Evan You"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_vue_runtime-dom-3.5.46-4e63f3a56c/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_vue_runtime-dom-3.5.46-4e63f3a56c/files/001-LICENSE",
+          "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+          "bytes": 1091
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@vue/server-renderer",
+      "version": "3.5.46",
+      "identity": "node_modules/@vue/server-renderer",
+      "source": "https://registry.npmmirror.com/@vue/server-renderer/-/server-renderer-3.5.46.tgz",
+      "repository": "git+https://github.com/vuejs/core.git",
+      "declaredAuthors": [
+        "Evan You"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_vue_server-renderer-3.5.46-3db42e19c4/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_vue_server-renderer-3.5.46-3db42e19c4/files/001-LICENSE",
+          "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+          "bytes": 1091
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@vue/shared",
+      "version": "3.5.46",
+      "identity": "node_modules/@vue/shared",
+      "source": "https://registry.npmmirror.com/@vue/shared/-/shared-3.5.46.tgz",
+      "repository": "git+https://github.com/vuejs/core.git",
+      "declaredAuthors": [
+        "Evan You"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_vue_shared-3.5.46-dff2a10ba4/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_vue_shared-3.5.46-dff2a10ba4/files/001-LICENSE",
+          "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+          "bytes": 1091
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@vueuse/core",
+      "version": "14.1.0",
+      "identity": "node_modules/@vueuse/core",
+      "source": "https://registry.npmmirror.com/@vueuse/core/-/core-14.1.0.tgz",
+      "repository": "git+https://github.com/vueuse/vueuse.git",
+      "declaredAuthors": [
+        "Anthony Fu <https://github.com/antfu>"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_vueuse_core-14.1.0-b62d854bd3/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_vueuse_core-14.1.0-b62d854bd3/files/001-LICENSE",
+          "sha256": "0f844b1160603552a01662ac2999c14e5fb4df487e65619b9ed4406e43eb3c0b",
+          "bytes": 1101
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@vueuse/metadata",
+      "version": "14.1.0",
+      "identity": "node_modules/@vueuse/metadata",
+      "source": "https://registry.npmmirror.com/@vueuse/metadata/-/metadata-14.1.0.tgz",
+      "repository": "git+https://github.com/vueuse/vueuse.git",
+      "declaredAuthors": [
+        "Anthony Fu <https://github.com/antfu>"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_vueuse_metadata-14.1.0-a1150ccbac/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_vueuse_metadata-14.1.0-a1150ccbac/files/001-LICENSE",
+          "sha256": "0f844b1160603552a01662ac2999c14e5fb4df487e65619b9ed4406e43eb3c0b",
+          "bytes": 1101
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@vueuse/shared",
+      "version": "14.1.0",
+      "identity": "node_modules/@vueuse/shared",
+      "source": "https://registry.npmmirror.com/@vueuse/shared/-/shared-14.1.0.tgz",
+      "repository": "git+https://github.com/vueuse/vueuse.git",
+      "declaredAuthors": [
+        "Anthony Fu <https://github.com/antfu>"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/_vueuse_shared-14.1.0-dac33008b8/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/_vueuse_shared-14.1.0-dac33008b8/files/001-LICENSE",
+          "sha256": "0f844b1160603552a01662ac2999c14e5fb4df487e65619b9ed4406e43eb3c0b",
+          "bytes": 1101
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "aria-hidden",
+      "version": "1.2.6",
+      "identity": "node_modules/aria-hidden",
+      "source": "https://registry.npmmirror.com/aria-hidden/-/aria-hidden-1.2.6.tgz",
+      "repository": "git+https://github.com/theKashey/aria-hidden.git",
+      "declaredAuthors": [
+        "Anton Korzunov <thekashey@gmail.com>"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/aria-hidden-1.2.6-b337ebd897/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/aria-hidden-1.2.6-b337ebd897/files/001-LICENSE",
+          "sha256": "30f0cfddf483d1128e3610205020f2041a6c5e837aa999e0aa82e5576187d4a9",
+          "bytes": 1071
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "class-variance-authority",
+      "version": "0.7.1",
+      "identity": "node_modules/class-variance-authority",
+      "source": "https://registry.npmmirror.com/class-variance-authority/-/class-variance-authority-0.7.1.tgz",
+      "repository": "https://github.com/joe-bell/cva.git",
+      "declaredAuthors": [
+        "Joe Bell (https://joebell.co.uk)"
+      ],
+      "declaredLicense": "Apache-2.0",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/class-variance-authority-0.7.1-aded7047f6/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/class-variance-authority-0.7.1-aded7047f6/files/001-LICENSE",
+          "sha256": "0ccbf956cffc8dcf515809433cb5242ee67c94513d46e48c261d68d0880de406",
+          "bytes": 10753
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": "notices/npm/class-variance-authority-0.7.1-aded7047f6/SOURCE_HEADERS.txt",
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "clsx",
+      "version": "2.1.1",
+      "identity": "node_modules/clsx",
+      "source": "https://registry.npmmirror.com/clsx/-/clsx-2.1.1.tgz",
+      "repository": "lukeed/clsx",
+      "declaredAuthors": [
+        "Luke Edwards <luke.edwards05@gmail.com>"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/clsx-2.1.1-d66d255412/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "license",
+          "output": "notices/npm/clsx-2.1.1-d66d255412/files/001-license",
+          "sha256": "9a9edad7baae52622bddf3c15b2ef8a33d2c89f2d25408ad13e8a7481c6b0c97",
+          "bytes": 1104
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "csstype",
+      "version": "3.2.4",
+      "identity": "node_modules/csstype",
+      "source": "https://registry.npmmirror.com/csstype/-/csstype-3.2.4.tgz",
+      "repository": "https://github.com/frenic/csstype",
+      "declaredAuthors": [
+        "Fredrik Nicol <fredrik.nicol@gmail.com>"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/csstype-3.2.4-8c4a8a7665/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/csstype-3.2.4-8c4a8a7665/files/001-LICENSE",
+          "sha256": "11d55bd4541c75ee7879547ac49089c489163dae49551389713c3d026cab383e",
+          "bytes": 1062
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "defu",
+      "version": "6.1.7",
+      "identity": "node_modules/defu",
+      "source": "https://registry.npmmirror.com/defu/-/defu-6.1.7.tgz",
+      "repository": "unjs/defu",
+      "declaredAuthors": [],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/defu-6.1.7-7a9e16b45e/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/defu-6.1.7-7a9e16b45e/files/001-LICENSE",
+          "sha256": "46231df5a7733c3f52f11b71f3df61813007745b62b09031acfb45fb42d75082",
+          "bytes": 1078
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "entities",
+      "version": "7.0.1",
+      "identity": "node_modules/entities",
+      "source": "https://registry.npmmirror.com/entities/-/entities-7.0.1.tgz",
+      "repository": "https://github.com/fb55/entities.git",
+      "declaredAuthors": [
+        "Felix Boehm <me@feedic.com>"
+      ],
+      "declaredLicense": "BSD-2-Clause",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/entities-7.0.1-5d87f72250/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/entities-7.0.1-5d87f72250/files/001-LICENSE",
+          "sha256": "cb992345949ccd6e8394b2cd6c465f7b897c864f845937dbf64e8997f389e164",
+          "bytes": 1260
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "estree-walker",
+      "version": "2.0.2",
+      "identity": "node_modules/@vue/compiler-core/node_modules/estree-walker",
+      "source": "https://registry.npmmirror.com/estree-walker/-/estree-walker-2.0.2.tgz",
+      "repository": "https://github.com/Rich-Harris/estree-walker",
+      "declaredAuthors": [
+        "Rich Harris"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/estree-walker-2.0.2-a3b9cf4bf6/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/estree-walker-2.0.2-a3b9cf4bf6/files/001-LICENSE",
+          "sha256": "8a6dcbabe7179f9c8489c08a7d874d0f1e093ae7449e03756ccf87cb9d0e296e",
+          "bytes": 1126
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "estree-walker",
+      "version": "2.0.2",
+      "identity": "node_modules/@vue/compiler-sfc/node_modules/estree-walker",
+      "source": "https://registry.npmmirror.com/estree-walker/-/estree-walker-2.0.2.tgz",
+      "repository": "https://github.com/Rich-Harris/estree-walker",
+      "declaredAuthors": [
+        "Rich Harris"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/estree-walker-2.0.2-d80681e49c/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/estree-walker-2.0.2-d80681e49c/files/001-LICENSE",
+          "sha256": "8a6dcbabe7179f9c8489c08a7d874d0f1e093ae7449e03756ccf87cb9d0e296e",
+          "bytes": 1126
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "lucide-vue-next",
+      "version": "1.0.0",
+      "identity": "node_modules/lucide-vue-next",
+      "source": "https://registry.npmmirror.com/lucide-vue-next/-/lucide-vue-next-1.0.0.tgz",
+      "repository": "https://github.com/lucide-icons/lucide.git",
+      "declaredAuthors": [
+        "Eric Fennis"
+      ],
+      "declaredLicense": "ISC",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/lucide-vue-next-1.0.0-58dc0a363f/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/lucide-vue-next-1.0.0-58dc0a363f/files/001-LICENSE",
+          "sha256": "668dcc52803480e0a026b31140a4cae668772663cd764e5991d252eef03f98db",
+          "bytes": 2004
+        },
+        {
+          "source": "dist/esm/icons/copyright.js",
+          "output": "notices/npm/lucide-vue-next-1.0.0-58dc0a363f/files/002-copyright.js",
+          "sha256": "a06f776120418a2ad806a8d4b1f30f7b2b446213d2425edecc91405881b95038",
+          "bytes": 485
+        },
+        {
+          "source": "dist/esm/icons/copyright.js.map",
+          "output": "notices/npm/lucide-vue-next-1.0.0-58dc0a363f/files/003-copyright.js.map",
+          "sha256": "f65bf824d14be515d8b8a474573eff927407d8a88cd87a33caa4a60fa8e91d70",
+          "bytes": 2009
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": "notices/npm/lucide-vue-next-1.0.0-58dc0a363f/SOURCE_HEADERS.txt",
+      "embeddedComponents": [
+        {
+          "name": "Feather-derived portions of Lucide",
+          "version": null,
+          "source": "LICENSE",
+          "output": "notices/npm/lucide-vue-next-1.0.0-58dc0a363f/files/001-LICENSE",
+          "license": "MIT for Feather-derived portions, alongside Lucide ISC; the entire original LICENSE, including both full grants and warranties, is retained unchanged."
+        }
+      ]
+    },
+    {
+      "ecosystem": "npm",
+      "name": "magic-string",
+      "version": "0.30.21",
+      "identity": "node_modules/magic-string",
+      "source": "https://registry.npmmirror.com/magic-string/-/magic-string-0.30.21.tgz",
+      "repository": "git+https://github.com/Rich-Harris/magic-string.git",
+      "declaredAuthors": [
+        "Rich Harris"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/magic-string-0.30.21-b84c4c3dd5/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/magic-string-0.30.21-b84c4c3dd5/files/001-LICENSE",
+          "sha256": "1cbe51b907662f6cb1492b16c359384a595180bf0e4d101603ed525e75c4e484",
+          "bytes": 1051
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "nanoid",
+      "version": "3.3.20",
+      "identity": "node_modules/nanoid",
+      "source": "https://registry.npmmirror.com/nanoid/-/nanoid-3.3.20.tgz",
+      "repository": "ai/nanoid",
+      "declaredAuthors": [
+        "Andrey Sitnik <andrey@sitnik.ru>"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/nanoid-3.3.20-ef6c34dd10/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/nanoid-3.3.20-ef6c34dd10/files/001-LICENSE",
+          "sha256": "da4db1480d9beea3483a2eda5c53b22238d0827d57da162b48f122e04d2d9987",
+          "bytes": 1095
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "ohash",
+      "version": "2.0.12",
+      "identity": "node_modules/ohash",
+      "source": "https://registry.npmmirror.com/ohash/-/ohash-2.0.12.tgz",
+      "repository": "unjs/ohash",
+      "declaredAuthors": [],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/ohash-2.0.12-597d98dbd0/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/ohash-2.0.12-597d98dbd0/files/001-LICENSE",
+          "sha256": "46231df5a7733c3f52f11b71f3df61813007745b62b09031acfb45fb42d75082",
+          "bytes": 1078
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "picocolors",
+      "version": "1.1.1",
+      "identity": "node_modules/picocolors",
+      "source": "https://registry.npmmirror.com/picocolors/-/picocolors-1.1.1.tgz",
+      "repository": "alexeyraspopov/picocolors",
+      "declaredAuthors": [
+        "Alexey Raspopov"
+      ],
+      "declaredLicense": "ISC",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/picocolors-1.1.1-704e4df8a5/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/picocolors-1.1.1-704e4df8a5/files/001-LICENSE",
+          "sha256": "6582629e2979466878f6014313dcc2f3756c9616148682227ce3063dde310750",
+          "bytes": 787
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "postcss",
+      "version": "8.5.33",
+      "identity": "node_modules/postcss",
+      "source": "https://registry.npmmirror.com/postcss/-/postcss-8.5.33.tgz",
+      "repository": "postcss/postcss",
+      "declaredAuthors": [
+        "Andrey Sitnik <andrey@sitnik.es>"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/postcss-8.5.33-0830b7c0be/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/postcss-8.5.33-0830b7c0be/files/001-LICENSE",
+          "sha256": "5be1f3465bba68a626777f984878814aaf35e7ef8e9fd314d469bcf887050fb8",
+          "bytes": 1095
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "reka-ui",
+      "version": "2.11.0",
+      "identity": "node_modules/reka-ui",
+      "source": "https://registry.npmmirror.com/reka-ui/-/reka-ui-2.11.0.tgz",
+      "repository": "git+https://github.com/unovue/reka-ui.git",
+      "declaredAuthors": [
+        "UnoVue Contributors (https://github.com/unovue)"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/reka-ui-2.11.0-447806169b/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/reka-ui-2.11.0-447806169b/files/001-LICENSE",
+          "sha256": "120a7305524d383f5a0fe2078009dddbe0d10bf951a6644156472cc6602c6039",
+          "bytes": 1091
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "source-map-js",
+      "version": "1.2.4",
+      "identity": "node_modules/source-map-js",
+      "source": "https://registry.npmmirror.com/source-map-js/-/source-map-js-1.2.4.tgz",
+      "repository": "7rulnik/source-map-js",
+      "declaredAuthors": [
+        "Valentin 7rulnik Semirulnik <v7rulnik@gmail.com>",
+        "Nick Fitzgerald <nfitzgerald@mozilla.com>",
+        "Tobias Koppers <tobias.koppers@googlemail.com>",
+        "Duncan Beevers <duncan@dweebd.com>",
+        "Stephen Crane <scrane@mozilla.com>",
+        "Ryan Seddon <seddon.ryan@gmail.com>",
+        "Miles Elam <miles.elam@deem.com>",
+        "Mihai Bazon <mihai.bazon@gmail.com>",
+        "Michael Ficarra <github.public.email@michael.ficarra.me>",
+        "Todd Wolfson <todd@twolfson.com>",
+        "Alexander Solovyov <alexander@solovyov.net>",
+        "Felix Gnass <fgnass@gmail.com>",
+        "Conrad Irwin <conrad.irwin@gmail.com>",
+        "usrbincc <usrbincc@yahoo.com>",
+        "David Glasser <glasser@davidglasser.net>",
+        "Chase Douglas <chase@newrelic.com>",
+        "Evan Wallace <evan.exe@gmail.com>",
+        "Heather Arthur <fayearthur@gmail.com>",
+        "Hugh Kennedy <hughskennedy@gmail.com>",
+        "David Glasser <glasser@davidglasser.net>",
+        "Simon Lydell <simon.lydell@gmail.com>",
+        "Jmeas Smith <jellyes2@gmail.com>",
+        "Michael Z Goddard <mzgoddard@gmail.com>",
+        "azu <azu@users.noreply.github.com>",
+        "John Gozde <john@gozde.ca>",
+        "Adam Kirkton <akirkton@truefitinnovation.com>",
+        "Chris Montgomery <christopher.montgomery@dowjones.com>",
+        "J. Ryan Stinnett <jryans@gmail.com>",
+        "Jack Herrington <jherrington@walmartlabs.com>",
+        "Chris Truter <jeffpalentine@gmail.com>",
+        "Daniel Espeset <daniel@danielespeset.com>",
+        "Jamie Wong <jamie.lf.wong@gmail.com>",
+        "Eddy Bruël <ejpbruel@mozilla.com>",
+        "Hawken Rives <hawkrives@gmail.com>",
+        "Gilad Peleg <giladp007@gmail.com>",
+        "djchie <djchie.dev@gmail.com>",
+        "Gary Ye <garysye@gmail.com>",
+        "Nicolas Lalevée <nicolas.lalevee@hibnet.org>"
+      ],
+      "declaredLicense": "BSD-3-Clause",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/source-map-js-1.2.4-c447b62b9e/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/source-map-js-1.2.4-c447b62b9e/files/001-LICENSE",
+          "sha256": "6cb0631f71c7749763fd3dd1d5bee52dd1070ec17f2edc1710079ad070bd2fbd",
+          "bytes": 1526
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": "notices/npm/source-map-js-1.2.4-c447b62b9e/SOURCE_HEADERS.txt",
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "tailwind-merge",
+      "version": "3.7.1",
+      "identity": "node_modules/tailwind-merge",
+      "source": "https://registry.npmmirror.com/tailwind-merge/-/tailwind-merge-3.7.1.tgz",
+      "repository": "https://github.com/dcastil/tailwind-merge.git",
+      "declaredAuthors": [
+        "Dany Castillo"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/tailwind-merge-3.7.1-b4178df2b0/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE.md",
+          "output": "notices/npm/tailwind-merge-3.7.1-b4178df2b0/files/001-LICENSE.md",
+          "sha256": "d4c70c7ce38cea8778f0aed3fc0bef0a9dbd27f13bd8b6773cbd6d37941971e5",
+          "bytes": 1070
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": "notices/npm/tailwind-merge-3.7.1-b4178df2b0/SOURCE_HEADERS.txt",
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "tailwindcss",
+      "version": "4.3.5",
+      "identity": "node_modules/tailwindcss",
+      "source": "https://registry.npmmirror.com/tailwindcss/-/tailwindcss-4.3.5.tgz",
+      "repository": "https://github.com/tailwindlabs/tailwindcss.git",
+      "declaredAuthors": [],
+      "declaredLicense": "MIT",
+      "relationship": "distributed CSS source graph; Tailwind is declared in devDependencies but its imported stylesheet contributes to application assets; compiler/plugin executables are not implied to ship",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/tailwindcss-4.3.5-56cfeb60ff/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/tailwindcss-4.3.5-56cfeb60ff/files/001-LICENSE",
+          "sha256": "60e0b68c0f35c078eef3a5d29419d0b03ff84ec1df9c3f9d6e39a519a5ae7985",
+          "bytes": 1071
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "tslib",
+      "version": "2.9.1",
+      "identity": "node_modules/tslib",
+      "source": "https://registry.npmmirror.com/tslib/-/tslib-2.9.1.tgz",
+      "repository": "https://github.com/Microsoft/tslib.git",
+      "declaredAuthors": [
+        "Microsoft Corp."
+      ],
+      "declaredLicense": "0BSD",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/tslib-2.9.1-7e89d502d0/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE.txt",
+          "output": "notices/npm/tslib-2.9.1-7e89d502d0/files/001-LICENSE.txt",
+          "sha256": "210b19e543130388c68654b7497e967119ce17145f66ab7d85688fbd70f08751",
+          "bytes": 655
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": "notices/npm/tslib-2.9.1-7e89d502d0/SOURCE_HEADERS.txt",
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "typescript",
+      "version": "5.8.3",
+      "identity": "node_modules/typescript",
+      "source": "https://registry.npmmirror.com/typescript/-/typescript-5.8.3.tgz",
+      "repository": "https://github.com/microsoft/TypeScript.git",
+      "declaredAuthors": [
+        "Microsoft Corp."
+      ],
+      "declaredLicense": "Apache-2.0",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/typescript-5.8.3-ab4a5bf0e7/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE.txt",
+          "output": "notices/npm/typescript-5.8.3-ab4a5bf0e7/files/001-LICENSE.txt",
+          "sha256": "a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47",
+          "bytes": 9197
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": "notices/npm/typescript-5.8.3-ab4a5bf0e7/SOURCE_HEADERS.txt",
+      "embeddedComponents": []
+    },
+    {
+      "ecosystem": "npm",
+      "name": "vue",
+      "version": "3.5.46",
+      "identity": "node_modules/vue",
+      "source": "https://registry.npmmirror.com/vue/-/vue-3.5.46.tgz",
+      "repository": "git+https://github.com/vuejs/core.git",
+      "declaredAuthors": [
+        "Evan You"
+      ],
+      "declaredLicense": "MIT",
+      "relationship": "production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded",
+      "collectionStatus": "FILES_COLLECTED_NOT_LEGALLY_VERIFIED",
+      "vcs": null,
+      "notice": "notices/npm/vue-3.5.46-a194712a15/NOTICE.md",
+      "legalFiles": [
+        {
+          "source": "LICENSE",
+          "output": "notices/npm/vue-3.5.46-a194712a15/files/001-LICENSE",
+          "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+          "bytes": 1091
+        }
+      ],
+      "upstreamLegalFiles": [],
+      "sourceArchive": null,
+      "sourceHeaders": null,
+      "embeddedComponents": []
     }
   ],
   "ownedFiles": {
-    "THIRD_PARTY_NOTICES.md": "2c98fe953cd4aadd3ad54384a7dd4c4df197cb2d24ecf95d3776d620b491c932",
+    "THIRD_PARTY_NOTICES.md": "9dbe9328c05feaa7d9e6562f54a9b9488a9d99098fa3447c75a2d95216dcb8e4",
     "notices/cargo/adler2-2.0.1-238207d3c6/NOTICE.md": "2218c30ff2785143868bd61b1d85373c2befec4980965a0583ec127aaa8515e6",
     "notices/cargo/adler2-2.0.1-238207d3c6/files/001-LICENSE-0BSD": "861399f8c21c042b110517e76dc6b63a2b334276c8cf17412fc3c8908ca8dc17",
     "notices/cargo/adler2-2.0.1-238207d3c6/files/002-LICENSE-APACHE": "8ada45cd9f843acf64e4722ae262c622a2b3b3007c7310ef36ac1061a30f6adb",
@@ -10431,12 +11860,120 @@
     "notices/cargo/zlib-rs-0.6.8-374b9ad59d/files/001-LICENSE": "e72111c52b7d96ebe25348dee19f0744f444d3c95ae6b1ecb6ccaecc5bce05ba",
     "notices/cargo/zmij-1.0.23-bfa8099880/NOTICE.md": "27fd7da8096dd6bf1bdb00b43ad5dd89d286dec26151f1a96c631888bad88da2",
     "notices/cargo/zmij-1.0.23-bfa8099880/files/001-LICENSE-MIT": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
-    "notices/npm/_tauri-apps_api-2.12.5-55f3f9b4d4/NOTICE.md": "65bdf16e7464d09e4736b2e96040a1b43f5c3679faee284b31bcc86f88ac8d3f",
+    "notices/local/shadcn-vue/NOTICE.md": "336683fe83d8efc53ded140800ec3dccd9c43cd8821b01e1722cdeec11243c02",
+    "notices/local/shadcn-vue/files/SHADCN_LICENSE.txt": "69f84f4ad77be299dbf42d03d7fd862ab3ab05546c6e573c6c7c875b0168a94d",
+    "notices/npm/_babel_helper-string-parser-7.29.15-8fc1a8f3c7/NOTICE.md": "17aa1c8656139d56821c488d094caa6ca3561dec0ded58361dc23fd7f54d1e85",
+    "notices/npm/_babel_helper-string-parser-7.29.15-8fc1a8f3c7/files/001-LICENSE": "117da2af0d4ce0fe1c8e19b5cff9dcd806adf973d328d27b11d4448c4ff24f76",
+    "notices/npm/_babel_helper-validator-identifier-7.29.7-78632d56d2/NOTICE.md": "74bb03999994a5cad63bcedf2b1596e188fc71238e1643a9c60aa23a7a73c019",
+    "notices/npm/_babel_helper-validator-identifier-7.29.7-78632d56d2/files/001-LICENSE": "117da2af0d4ce0fe1c8e19b5cff9dcd806adf973d328d27b11d4448c4ff24f76",
+    "notices/npm/_babel_parser-7.29.15-abdaa5046e/NOTICE.md": "bcf0dc5e65a05fecec44f981a5cab044134e5fab27d13120196477202ab47bf7",
+    "notices/npm/_babel_parser-7.29.15-abdaa5046e/files/001-LICENSE": "2e97627cb278aa7556fb9e8817368302301a595b6c7582512b8d74c57b773652",
+    "notices/npm/_babel_types-7.29.15-a87a4414a1/NOTICE.md": "b55153453b142735a28f90b09da5836812b7b54081740c417925ba48a7c97dbc",
+    "notices/npm/_babel_types-7.29.15-a87a4414a1/files/001-LICENSE": "117da2af0d4ce0fe1c8e19b5cff9dcd806adf973d328d27b11d4448c4ff24f76",
+    "notices/npm/_floating-ui_core-1.8.0-46ec348427/NOTICE.md": "61d8d3f45c5edd7884fbdad5aa504ebf71f2af4663671f9b29ee57b288d870e6",
+    "notices/npm/_floating-ui_core-1.8.0-46ec348427/files/001-LICENSE": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+    "notices/npm/_floating-ui_dom-1.8.0-f505c35819/NOTICE.md": "939608384cee0ce9ab8d2a6fef8b4a3ce70731b76c1fad6eb3fe08134990587c",
+    "notices/npm/_floating-ui_dom-1.8.0-f505c35819/files/001-LICENSE": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+    "notices/npm/_floating-ui_utils-0.2.12-09bd0df886/NOTICE.md": "10a4871de98867d55f7ec54fd3ccffbf7ddb0fb620fc3ae504c76498e82a8b71",
+    "notices/npm/_floating-ui_utils-0.2.12-09bd0df886/files/001-LICENSE": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+    "notices/npm/_floating-ui_vue-2.0.1-d85612b0cf/NOTICE.md": "84cdd269dc493b89681e87170f6913d85ff816f1eaf94aeb4b86dc86dbca9c36",
+    "notices/npm/_floating-ui_vue-2.0.1-d85612b0cf/files/001-LICENSE": "46c97b198a78dc0befc1a823ba7bcdf993726a887d0215edcce575a61b947115",
+    "notices/npm/_internationalized_date-3.12.4-b2f4a941eb/NOTICE.md": "71b1516163ed227efcca2d1c9df895682388d806f38ebc3dddf4e0a66e0f7edf",
+    "notices/npm/_internationalized_date-3.12.4-b2f4a941eb/SOURCE_HEADERS.txt": "322d847a413a8a1a0ee9300993790d790a73407646f34d1de40ac937bae1c659",
+    "notices/npm/_internationalized_date-3.12.4-b2f4a941eb/files/001-LICENSE": "7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84",
+    "notices/npm/_internationalized_number-3.6.9-20dcb5e7e7/NOTICE.md": "022b405f298f06d3cdd3059d2ffe1ed0759d865ff2aedef938b085207019b3e7",
+    "notices/npm/_internationalized_number-3.6.9-20dcb5e7e7/SOURCE_HEADERS.txt": "1f8b1f748a5e3bfde7cc7f134b4124dbfb6be4e61572ee8534167909ba11abe3",
+    "notices/npm/_internationalized_number-3.6.9-20dcb5e7e7/files/001-LICENSE": "7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84",
+    "notices/npm/_jridgewell_sourcemap-codec-1.6.0-11d785d1ad/NOTICE.md": "75bffde41158f73e9201ad2e1f92fdfa8ea3de47c9bbbf10b816ac0f5aead2f7",
+    "notices/npm/_jridgewell_sourcemap-codec-1.6.0-11d785d1ad/files/001-LICENSE": "769d154fbde32a915af110b1123650bc79f4cbe675acc66e005265bf069c6c6c",
+    "notices/npm/_swc_helpers-0.5.24-bab3650594/NOTICE.md": "117c74e12311988b6498bd7d817009bdc65e15b92bf6ac9bf84fe7868a49a1bf",
+    "notices/npm/_swc_helpers-0.5.24-bab3650594/files/001-LICENSE": "d96eba1f1881334d50ffc144276dfa98e147a415e7c591ecdfcb81680361dc91",
+    "notices/npm/_tanstack_virtual-core-3.19.13-c2babfc43e/NOTICE.md": "8cb1890d6bb4a64130444d41e8e74e98db78cd1136c1a7ebf5c2542e1aca5974",
+    "notices/npm/_tanstack_virtual-core-3.19.13-c2babfc43e/files/001-LICENSE": "a405ee70c632bb938acb7ac5f210e814409b3760ea9d2329d8ed8ffcfd11a0e7",
+    "notices/npm/_tanstack_vue-virtual-3.13.54-372fb83298/NOTICE.md": "22404c7204d641e431374852607598e552892e2f150306b1ec2b558a3c2c73f3",
+    "notices/npm/_tanstack_vue-virtual-3.13.54-372fb83298/files/001-LICENSE": "a405ee70c632bb938acb7ac5f210e814409b3760ea9d2329d8ed8ffcfd11a0e7",
+    "notices/npm/_tauri-apps_api-2.12.5-55f3f9b4d4/NOTICE.md": "67a6b9d8c9962ed94d760a71625177a0bed8f76995afc470c641fc1ee3270451",
     "notices/npm/_tauri-apps_api-2.12.5-55f3f9b4d4/SOURCE_HEADERS.txt": "4bd51b66a0e4a49276dac37bab683914e1c822fc569310bc4f6ca8e5f806bfd0",
     "notices/npm/_tauri-apps_api-2.12.5-55f3f9b4d4/embedded/tslib-1-permission.txt": "7130b2f41c55bc4cf10d1000a4b74242135c8e8def9c9afe40009a9c79934483",
     "notices/npm/_tauri-apps_api-2.12.5-55f3f9b4d4/embedded/tslib-2-permission.txt": "7130b2f41c55bc4cf10d1000a4b74242135c8e8def9c9afe40009a9c79934483",
     "notices/npm/_tauri-apps_api-2.12.5-55f3f9b4d4/files/001-LICENSE-APACHE-2.0": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
     "notices/npm/_tauri-apps_api-2.12.5-55f3f9b4d4/files/002-LICENSE-MIT": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d",
+    "notices/npm/_types_web-bluetooth-0.0.21-a90f86c8e5/NOTICE.md": "475e98ea79d458dfe6395bd6413bd6cdb07dab4da5bf843c7b2bf5144ba6fcd5",
+    "notices/npm/_types_web-bluetooth-0.0.21-a90f86c8e5/files/001-LICENSE": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+    "notices/npm/_vue_compiler-core-3.5.46-ff62347dde/NOTICE.md": "21e792b52cca93333ab192f8b4a082040d2dbbd426bb9c36a28f1baad47d8a02",
+    "notices/npm/_vue_compiler-core-3.5.46-ff62347dde/files/001-LICENSE": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+    "notices/npm/_vue_compiler-dom-3.5.46-15345def7b/NOTICE.md": "d3c4f5bc11560b4604f734c9a369bcf6e9e3aaef03e27ac6558e902e633d4975",
+    "notices/npm/_vue_compiler-dom-3.5.46-15345def7b/files/001-LICENSE": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+    "notices/npm/_vue_compiler-sfc-3.5.46-3bdfda0f93/NOTICE.md": "cb21bc4fe7df73737a03c4614f8d84a9d89eae9d9e2c28a37f417619a4e53266",
+    "notices/npm/_vue_compiler-sfc-3.5.46-3bdfda0f93/files/001-LICENSE": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+    "notices/npm/_vue_compiler-ssr-3.5.46-6b6c884496/NOTICE.md": "0eaecb0a42a040418df821e7a6e4f52ec590a540ee80e5d9a9739c544a64ebba",
+    "notices/npm/_vue_compiler-ssr-3.5.46-6b6c884496/files/001-LICENSE": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+    "notices/npm/_vue_reactivity-3.5.46-c0b42a05ae/NOTICE.md": "f26481591792af395e0ea11d99f862c7e4a41964767246e1a150619efbd25479",
+    "notices/npm/_vue_reactivity-3.5.46-c0b42a05ae/files/001-LICENSE": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+    "notices/npm/_vue_runtime-core-3.5.46-d0ee50fbaa/NOTICE.md": "7f73f951a031cdce62144555188ed6ec227703198bfd9dc36f76d3a7c1ffee6a",
+    "notices/npm/_vue_runtime-core-3.5.46-d0ee50fbaa/files/001-LICENSE": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+    "notices/npm/_vue_runtime-dom-3.5.46-4e63f3a56c/NOTICE.md": "fe71cfdc0db3af736eaa6d62fb238f04e019cb1c0a9b0b4c6fd8135a5694c981",
+    "notices/npm/_vue_runtime-dom-3.5.46-4e63f3a56c/files/001-LICENSE": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+    "notices/npm/_vue_server-renderer-3.5.46-3db42e19c4/NOTICE.md": "cb0dbb1e3aaaba519cac15480e0583e706b31928b3d52591d0756dccaff7e502",
+    "notices/npm/_vue_server-renderer-3.5.46-3db42e19c4/files/001-LICENSE": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+    "notices/npm/_vue_shared-3.5.46-dff2a10ba4/NOTICE.md": "c59d0a84b8d74edd08eb93635ab0730ea7b0ee9d06f2258e07f5e5ed7b6f3d0e",
+    "notices/npm/_vue_shared-3.5.46-dff2a10ba4/files/001-LICENSE": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+    "notices/npm/_vueuse_core-14.1.0-b62d854bd3/NOTICE.md": "098604db7af27a885a1a1f0fb1d022fb81deadc746b1d1411647e5a5f2d0ffb7",
+    "notices/npm/_vueuse_core-14.1.0-b62d854bd3/files/001-LICENSE": "0f844b1160603552a01662ac2999c14e5fb4df487e65619b9ed4406e43eb3c0b",
+    "notices/npm/_vueuse_metadata-14.1.0-a1150ccbac/NOTICE.md": "df19fe9f4d47f1bf9a39dc2f35218564aeddee08a229f8ae798b196ccccf1cc9",
+    "notices/npm/_vueuse_metadata-14.1.0-a1150ccbac/files/001-LICENSE": "0f844b1160603552a01662ac2999c14e5fb4df487e65619b9ed4406e43eb3c0b",
+    "notices/npm/_vueuse_shared-14.1.0-dac33008b8/NOTICE.md": "fd09b3820937f8044895b06943d3184f994d9a0a86d8a3b2448250475c5e35b5",
+    "notices/npm/_vueuse_shared-14.1.0-dac33008b8/files/001-LICENSE": "0f844b1160603552a01662ac2999c14e5fb4df487e65619b9ed4406e43eb3c0b",
+    "notices/npm/aria-hidden-1.2.6-b337ebd897/NOTICE.md": "d15876ab2c85d5954366d4569f4923cc70011ea52db49ee11cdc331e4d3c3b06",
+    "notices/npm/aria-hidden-1.2.6-b337ebd897/files/001-LICENSE": "30f0cfddf483d1128e3610205020f2041a6c5e837aa999e0aa82e5576187d4a9",
+    "notices/npm/class-variance-authority-0.7.1-aded7047f6/NOTICE.md": "0beed63c2d7745f8fbec17ef3e99c2b970443e735e379e81a903699570a75d44",
+    "notices/npm/class-variance-authority-0.7.1-aded7047f6/SOURCE_HEADERS.txt": "2a73d1376a8f10d7ca3cf9094536d72215825d2c2c8b6b4dd62da57876dfe3b6",
+    "notices/npm/class-variance-authority-0.7.1-aded7047f6/files/001-LICENSE": "0ccbf956cffc8dcf515809433cb5242ee67c94513d46e48c261d68d0880de406",
+    "notices/npm/clsx-2.1.1-d66d255412/NOTICE.md": "d4fd336dfb22711793c5f2dbf4681ccf6ea458d73883a954aa18ea14bb0c3309",
+    "notices/npm/clsx-2.1.1-d66d255412/files/001-license": "9a9edad7baae52622bddf3c15b2ef8a33d2c89f2d25408ad13e8a7481c6b0c97",
+    "notices/npm/csstype-3.2.4-8c4a8a7665/NOTICE.md": "e66fcd9850fc0d847906ca6604188f8612df52cb1c83a5cae244c5fb4993278b",
+    "notices/npm/csstype-3.2.4-8c4a8a7665/files/001-LICENSE": "11d55bd4541c75ee7879547ac49089c489163dae49551389713c3d026cab383e",
+    "notices/npm/defu-6.1.7-7a9e16b45e/NOTICE.md": "4d1e7d175193e8451a073d86d066ae6a62c6c9f687eb12be0aad48f669dd2a31",
+    "notices/npm/defu-6.1.7-7a9e16b45e/files/001-LICENSE": "46231df5a7733c3f52f11b71f3df61813007745b62b09031acfb45fb42d75082",
+    "notices/npm/entities-7.0.1-5d87f72250/NOTICE.md": "e97910a7b3d6a01b9f33e98edd222b5e8a0a67eb79ffbabcdd7b60686d8713f2",
+    "notices/npm/entities-7.0.1-5d87f72250/files/001-LICENSE": "cb992345949ccd6e8394b2cd6c465f7b897c864f845937dbf64e8997f389e164",
+    "notices/npm/estree-walker-2.0.2-a3b9cf4bf6/NOTICE.md": "970281fa7e072a2788f6357963527953f7a8366afdaba6eccaf3689685331d4b",
+    "notices/npm/estree-walker-2.0.2-a3b9cf4bf6/files/001-LICENSE": "8a6dcbabe7179f9c8489c08a7d874d0f1e093ae7449e03756ccf87cb9d0e296e",
+    "notices/npm/estree-walker-2.0.2-d80681e49c/NOTICE.md": "970281fa7e072a2788f6357963527953f7a8366afdaba6eccaf3689685331d4b",
+    "notices/npm/estree-walker-2.0.2-d80681e49c/files/001-LICENSE": "8a6dcbabe7179f9c8489c08a7d874d0f1e093ae7449e03756ccf87cb9d0e296e",
+    "notices/npm/lucide-vue-next-1.0.0-58dc0a363f/NOTICE.md": "a5c596f916763dcfbfde9b67a3de37b73d713bbf2bc311c6d9dd2f5a9d98c43e",
+    "notices/npm/lucide-vue-next-1.0.0-58dc0a363f/SOURCE_HEADERS.txt": "e29ed138f64cd7a4bc085e709dfcc457997843018fd6e2349a0d3f789070f3f6",
+    "notices/npm/lucide-vue-next-1.0.0-58dc0a363f/files/001-LICENSE": "668dcc52803480e0a026b31140a4cae668772663cd764e5991d252eef03f98db",
+    "notices/npm/lucide-vue-next-1.0.0-58dc0a363f/files/002-copyright.js": "a06f776120418a2ad806a8d4b1f30f7b2b446213d2425edecc91405881b95038",
+    "notices/npm/lucide-vue-next-1.0.0-58dc0a363f/files/003-copyright.js.map": "f65bf824d14be515d8b8a474573eff927407d8a88cd87a33caa4a60fa8e91d70",
+    "notices/npm/magic-string-0.30.21-b84c4c3dd5/NOTICE.md": "439ad0c5f5d8bbca00952d60b6ad533485d91039701d7edbb4fb5fd0d950157d",
+    "notices/npm/magic-string-0.30.21-b84c4c3dd5/files/001-LICENSE": "1cbe51b907662f6cb1492b16c359384a595180bf0e4d101603ed525e75c4e484",
+    "notices/npm/nanoid-3.3.20-ef6c34dd10/NOTICE.md": "21d9fa0276ee71ce53230107fb7fbb08278838ff57081e9c856548ad4f9511fe",
+    "notices/npm/nanoid-3.3.20-ef6c34dd10/files/001-LICENSE": "da4db1480d9beea3483a2eda5c53b22238d0827d57da162b48f122e04d2d9987",
+    "notices/npm/ohash-2.0.12-597d98dbd0/NOTICE.md": "3955f6bd545522fa8234d49573481295d50cbe56813012eacf1d20c93325324f",
+    "notices/npm/ohash-2.0.12-597d98dbd0/files/001-LICENSE": "46231df5a7733c3f52f11b71f3df61813007745b62b09031acfb45fb42d75082",
+    "notices/npm/picocolors-1.1.1-704e4df8a5/NOTICE.md": "f773130617f6e62879aad5bc2ab0f7c6eded679727f8839300e6e03d298c9293",
+    "notices/npm/picocolors-1.1.1-704e4df8a5/files/001-LICENSE": "6582629e2979466878f6014313dcc2f3756c9616148682227ce3063dde310750",
+    "notices/npm/postcss-8.5.33-0830b7c0be/NOTICE.md": "bfc654f1eb441e65bf632f2ab1f6ec6de737e45aa85161a598c499ea96bac6b6",
+    "notices/npm/postcss-8.5.33-0830b7c0be/files/001-LICENSE": "5be1f3465bba68a626777f984878814aaf35e7ef8e9fd314d469bcf887050fb8",
+    "notices/npm/reka-ui-2.11.0-447806169b/NOTICE.md": "0ccef1b50a456b38ae359c1ba10b2962cb4d2a9a1e4f63f219ca9d9b13769595",
+    "notices/npm/reka-ui-2.11.0-447806169b/files/001-LICENSE": "120a7305524d383f5a0fe2078009dddbe0d10bf951a6644156472cc6602c6039",
+    "notices/npm/source-map-js-1.2.4-c447b62b9e/NOTICE.md": "b2dae6a9467590c559a9e15e9210dc59d7a063060cc776f35866f226ce8f5503",
+    "notices/npm/source-map-js-1.2.4-c447b62b9e/SOURCE_HEADERS.txt": "71f7deebc845e2befe8c961ab2d86214cf848473db0258db39fbe17a14dff181",
+    "notices/npm/source-map-js-1.2.4-c447b62b9e/files/001-LICENSE": "6cb0631f71c7749763fd3dd1d5bee52dd1070ec17f2edc1710079ad070bd2fbd",
+    "notices/npm/tailwind-merge-3.7.1-b4178df2b0/NOTICE.md": "cf25e448f91d1a7d1a0e8da496045d5e36d53a6dc56b43dabbeebc91a3bb5577",
+    "notices/npm/tailwind-merge-3.7.1-b4178df2b0/SOURCE_HEADERS.txt": "3ca2dae60558846f50ad770096f3afc5b96970bf6b112883bf1bb8e051426168",
+    "notices/npm/tailwind-merge-3.7.1-b4178df2b0/files/001-LICENSE.md": "d4c70c7ce38cea8778f0aed3fc0bef0a9dbd27f13bd8b6773cbd6d37941971e5",
+    "notices/npm/tailwindcss-4.3.5-56cfeb60ff/NOTICE.md": "4e7aa1400be1e6b17915b7ae31fc9b6b43690eaa534f0871a6ede9ced194e39d",
+    "notices/npm/tailwindcss-4.3.5-56cfeb60ff/files/001-LICENSE": "60e0b68c0f35c078eef3a5d29419d0b03ff84ec1df9c3f9d6e39a519a5ae7985",
+    "notices/npm/tslib-2.9.1-7e89d502d0/NOTICE.md": "f092fadbda228aa175bb9afcad7f86692d6ba31f47813742193ae3fcaa888f6c",
+    "notices/npm/tslib-2.9.1-7e89d502d0/SOURCE_HEADERS.txt": "2f49e07f46d632af60a2e2caee63085a25990724ed06f1488f4d2f7d45ccf0ab",
+    "notices/npm/tslib-2.9.1-7e89d502d0/files/001-LICENSE.txt": "210b19e543130388c68654b7497e967119ce17145f66ab7d85688fbd70f08751",
+    "notices/npm/typescript-5.8.3-ab4a5bf0e7/NOTICE.md": "44cf13972f5e0a4a230eb93ac61881681133803a8668b43730481fcc170b7c51",
+    "notices/npm/typescript-5.8.3-ab4a5bf0e7/SOURCE_HEADERS.txt": "a99f71552a7454486cdefa74910cd0abdde4eef4bd810ce26fcf03e5c6f9c67d",
+    "notices/npm/typescript-5.8.3-ab4a5bf0e7/files/001-LICENSE.txt": "a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47",
+    "notices/npm/vue-3.5.46-a194712a15/NOTICE.md": "457d87292135b7f18b6fbf4ebf273ea69e3a37702cd23f41b0e6c79023aff22d",
+    "notices/npm/vue-3.5.46-a194712a15/files/001-LICENSE": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
     "notices/source-availability.md": "2a162c2a35a024a688ada7673da03904f002537fd14d30e75e8418c21e1f699a",
     "notices/sources/cssparser-0.37.0.crate": "8c9cdaae01d5ed7882b04d795e7f752f46ff52d2fa3b50a20d28c464510bba98",
     "notices/sources/cssparser-macros-0.7.1.crate": "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a",

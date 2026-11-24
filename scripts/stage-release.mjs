@@ -1,16 +1,22 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { copyFile, lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
-import { PROJECT, claimEmptyDirectory, errorInfo, fingerprint, inside, json, parseArgs, powershell, readJson, signInfo } from './lib/run.mjs';
-import { copyTree, inventory, publicMetadata, readVersion, summarizeReport, validateRustEvidence, verifyNotices } from './lib/release.mjs';
+import { PROJECT, claimEmptyDirectory, errorInfo, fingerprint, inside, isMain, json, parseArgs, powershell, readJson, signInfo } from './lib/run.mjs';
+import { copyTree, inventory, publicMetadata, readVersion, requiredReleaseKinds, validateReleaseEvidenceIndex, verifyNotices } from './lib/release.mjs';
 import { archiveFileList } from './lib/source-archive.mjs';
 
-const options = parseArgs(process.argv.slice(2), { values: ['source', 'output', 'binary', 'installer', 'reports', 'signature-policy'], flags: ['help'] });
+export function parseStageArgs(argv) {
+  const options = parseArgs(argv, { values: ['source', 'output', 'binary', 'installer', 'reports', 'signature-policy', 'desktop-kind'], flags: ['help'] });
+  options['desktop-kind'] ??= 'desktop'; requiredReleaseKinds(options['desktop-kind']);
+  return options;
+}
+export async function stageRelease(argv = process.argv.slice(2)) {
+const options = parseStageArgs(argv);
 if (options.help) {
-  console.log('node scripts/stage-release.mjs --reports <evidence-index.json> [--source <project>] [--output <new-version-directory>] [--binary <exe>] [--installer <exe>] [--signature-policy report|require-valid]\nEvidence index: {"schemaVersion":1,"reports":[{"kind":"desktop","path":"run/test-report.json","sha256":"..."}, ... frontend,rust-unit,rust-integration,installer,resources]}\nRefuses version mismatch, stale notices, failed/blocked required evidence, wrong-binary reports and output reuse. Archives source whitelist and verifies both ZIP contents offline.');
-  process.exit(0);
+  console.log('node scripts/stage-release.mjs --reports <evidence-index.json> [--source <project>] [--output <new-version-directory>] [--binary <exe>] [--installer <exe>] [--signature-policy report|require-valid] [--desktop-kind desktop|vue-desktop]\nEvidence index: {"schemaVersion":1,"reports":[{"kind":"desktop","path":"run/test-report.json","sha256":"..."}, ... frontend,rust-unit,rust-integration,installer,resources]}\nDefault desktop requires legacy parity; explicit vue-desktop requires full automated-test coverage with no missing/blocked/failed scenarios. Both require same-binary hash/time and repository integrity. Refuses version mismatch, stale notices, failed/blocked required evidence, wrong-binary reports and output reuse. Archives source whitelist and verifies both ZIP contents offline.');
+  return;
 }
 assert(options.reports, '--reports must point at an actual test evidence index; no test counts are hardcoded.');
 const source = resolve(options.source ?? PROJECT);
@@ -28,38 +34,9 @@ const signatures = { executable: await signInfo(binary), installer: await signIn
 if (signaturePolicy === 'require-valid') for (const [kind, signature] of Object.entries(signatures)) assert.equal(signature.status, 'Valid', `${kind} signature is not valid.`);
 const reportsIndex = resolve(options.reports);
 const index = await readJson(reportsIndex);
-assert.equal(index.schemaVersion, 1, 'Unsupported test evidence index schema.');
-assert(Array.isArray(index.reports), 'Evidence index must contain reports[].');
-const requiredKinds = new Set(['frontend', 'rust-unit', 'rust-integration', 'desktop', 'installer', 'resources']);
-const summaries = [];
-const artifactModified = Math.max((await lstat(binary)).mtimeMs, (await lstat(installer)).mtimeMs);
-for (const entry of index.reports) {
-  assert(requiredKinds.has(entry.kind), `Unknown or duplicate evidence kind: ${entry.kind}`);
-  requiredKinds.delete(entry.kind);
-  assert(entry.path && /^[a-f0-9]{64}$/.test(entry.sha256), 'Every evidence report requires a recorded SHA-256.');
-  const file = resolve(dirname(reportsIndex), entry.path);
-  const actual = await fingerprint(file);
-  assert.equal(actual.sha256, entry.sha256, `Evidence report changed: ${entry.kind}`);
-  const report = await readJson(file);
-  const summary = summarizeReport(report, entry.kind);
-  if (['desktop', 'installer', 'resources'].includes(entry.kind)) {
-    assert.equal(report.binary?.sha256, binaryInfo.sha256, `${entry.kind} report is for another application build.`);
-    assert(Date.parse(report.startedAt) >= (await lstat(binary)).mtimeMs - 1000, `${entry.kind} report predates the supplied binary.`);
-    assert.equal(report.repositoryIntegrity?.status ?? (entry.kind === 'installer' ? 'passed' : undefined), 'passed', `${entry.kind} lacks repository integrity evidence.`);
-  }
-  if (entry.kind === 'installer') assert.equal(report.installer?.sha256, installerInfo.sha256, 'Installer report is for another installer artifact.');
-  if (['rust-unit', 'rust-integration'].includes(entry.kind)) {
-    assert.equal(report.command?.exitCode, 0, `${entry.kind} command did not exit successfully.`);
-    assert(report.log?.path && report.log?.sha256, `${entry.kind} requires the actual command log hash, not only a count.`);
-    const logFile = resolve(dirname(file), report.log.path);
-    assert.equal((await fingerprint(logFile)).sha256, report.log.sha256, `${entry.kind} log hash mismatch.`);
-    const log = await readFile(logFile, 'utf8');
-    const passed = validateRustEvidence(report, log);
-    assert.equal(summary.passed, passed, `${entry.kind} count differs from actual log.`);
-  }
-  summaries.push({ kind: entry.kind, reportSha256: actual.sha256, reportBytes: actual.bytes, ...summary, kind: entry.kind });
-}
-assert.equal(requiredKinds.size, 0, `Required actual reports missing: ${[...requiredKinds].join(', ')}`);
+const binaryModifiedAt = (await lstat(binary)).mtimeMs;
+const artifactModified = Math.max(binaryModifiedAt, (await lstat(installer)).mtimeMs);
+const summaries = await validateReleaseEvidenceIndex(index, { reportsRoot: dirname(reportsIndex), binary: binaryInfo, installer: installerInfo, binaryModifiedAt, desktopKind: options['desktop-kind'] });
 
 await claimEmptyDirectory(output);
 const packageName = `${version.productName}-${version.version}-windows-x64`;
@@ -127,3 +104,6 @@ try {
 } catch (error) { console.error(error.stack ?? error.message); stageReport.status = 'failed'; stageReport.error = { name: error.name, message: 'Staging failed. No release is approved; inspect the command error output.' }; process.exitCode = 1; }
 finally { stageReport.finishedAt = new Date().toISOString(); await json(join(output, 'stage-result.json'), stageReport); }
 console.log(JSON.stringify({ status: stageReport.status, destination: output, archives: stageReport.archives, error: stageReport.error?.message }, null, 2));
+return stageReport;
+}
+if (isMain(import.meta.url)) await stageRelease();

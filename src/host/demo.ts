@@ -1,7 +1,7 @@
 import type {
   ActionResult, ArchiveQuery, ChangedFile, Commit, CommitDetail, ComparisonQuery, ConfigImport, Containment, Diagnostics,
   DiffQuery, DiffResult, ExternalSession, GitAction, GitRef, GithubUpdateInfo, HistoryPage, HistoryQuery, Host,
-  PersistedState, Remote, RepoConfig, Repository, RepositorySnapshot, Stash, StashDetail, SubmoduleInfo, TagDetail,
+  PersistedState, Remote, RepoConfig, Repository, RepositoryDiscovery, RepositorySnapshot, Stash, StashDetail, SubmoduleInfo, TagDetail,
   VerificationResult, VerifyQuery, WorkingState,
 } from '../shared/protocol';
 import { defaultState } from '../shared/protocol';
@@ -62,14 +62,15 @@ export class DemoHost implements Host {
     this.state.recent = [{ path: repo.path, name: repo.name }];
   }
   private readOnly(): never { throw { code: 'DEMO_READ_ONLY', message: 'This is sample data in a browser preview. Git operations are available only in the desktop application.' }; }
-  diagnostics(): Promise<Diagnostics> { return Promise.resolve({ appVersion: '0.2.2', gitVersion: 'Sample data — no Git commands are executed', gitPath: null, platform: 'browser preview · sample data' }); }
-  checkForUpdates(): Promise<GithubUpdateInfo> { return Promise.resolve({ status: 'unsupported', currentVersion: '0.2.2', latestVersion: null, releaseTag: null, releaseUrl: null, publishedAt: null, releaseNotes: null, notesTruncated: false }); }
+  diagnostics(): Promise<Diagnostics> { return Promise.resolve({ appVersion: '0.3.0', gitVersion: 'Sample data — no Git commands are executed', gitPath: null, platform: 'browser preview · sample data', hostMode: 'demo' }); }
+  checkForUpdates(): Promise<GithubUpdateInfo> { return Promise.resolve({ status: 'unsupported', currentVersion: '0.3.0', latestVersion: null, releaseTag: null, releaseUrl: null, publishedAt: null, releaseNotes: null, notesTruncated: false }); }
   loadState() { return Promise.resolve(structuredClone(this.state)); }
   saveState(value: PersistedState) { this.state = structuredClone(value); return Promise.resolve(); }
-  pickRepository() { return Promise.resolve(repo.path); }
-  openRepository(_path: string) { return Promise.resolve(structuredClone(repo)); }
+  pickRepository(_purpose?: 'repository' | 'directory') { return Promise.resolve(repo.path); }
+  openRepository(_path: string, _requestId?: string, _scopeRoot?: string) { return Promise.resolve(structuredClone(repo)); }
+  deactivateRepository(_requestId?: string) { return Promise.resolve(); }
   trustRepository(_repoId: string, _trusted: boolean) { return Promise.resolve(); }
-  discoverRepositories(_path: string, _depth: number) { return Promise.resolve([repo.path]); }
+  discoverRepositories(_path: string, _depth: number, _requestId?: string): Promise<RepositoryDiscovery> { return Promise.resolve({ root: repo.path, repositories: [{ path: repo.path, components: [], marker: 'git-directory' }], complete: true, limit: null, warnings: [], directories: 1, entries: 1 }); }
   refs(_repoId: string, _requestId: string) { return Promise.resolve(structuredClone(refs)); }
   history(query: HistoryQuery): Promise<HistoryPage> {
     let filtered = commits;
@@ -80,7 +81,7 @@ export class DemoHost implements Host {
     return Promise.resolve({ commits: structuredClone(filtered.slice(query.offset, query.offset + query.limit)), hasMore: false });
   }
   workingState(_repoId: string, _requestId: string): Promise<WorkingState> {
-    return Promise.resolve({ branch: 'main', ahead: 0, behind: 0, operation: null, conflicts: 0,
+    return Promise.resolve({ branch: 'main', ahead: 0, behind: 0, upstream: 'origin/main', trackingKnown: true, operation: null, conflicts: 0,
       files: [{ ...files[0], staged: false, unstaged: true }] });
   }
   commitDetail(_repoId: string, oid: string, _requestId: string, parent?: string): Promise<CommitDetail> {

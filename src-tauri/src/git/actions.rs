@@ -5,6 +5,9 @@
 //! subprocess inherits the runner's cancellation, trust and noninteractive-stdin
 //! policy. Git's own index/ref locks are never removed by this module.
 
+#[path = "clean.rs"]
+pub(super) mod clean;
+
 use super::GitService;
 use crate::{
     error::{AppError, Result},
@@ -552,7 +555,9 @@ fn clean_args(action: &GitAction) -> Result<Vec<String>> {
     if !preview && action.force != Some(true) {
         return Err(AppError::new("CONFIRMATION_REQUIRED", "Clean permanently deletes files. Preview first, then explicitly confirm with force=true."));
     }
-    let mut args = words(&["clean", if preview { "--dry-run" } else { "--force" }, "-d"]);
+    // Clean is never executed with force: deletion uses the reviewed, pinned
+    // regular-file set from clean.rs rather than a recursive directory pathspec.
+    let mut args = words(&["clean", "--dry-run", "-d"]);
     if action.include_ignored == Some(true) {
         args.push(
             if action.include_untracked != Some(false) {
@@ -567,7 +572,7 @@ fn clean_args(action: &GitAction) -> Result<Vec<String>> {
             "Choose includeUntracked and/or includeIgnored before cleaning.",
         ));
     }
-    // Exactly one --force: nested Git repositories must never be removed here.
+    // No force at all: nested repositories are never recursively removed.
     args.push("--".into());
     Ok(args)
 }
@@ -659,7 +664,7 @@ fn operation_on_disk(repo: &Repository) -> Result<Option<Operation>> {
     }
 }
 
-fn ensure_idle(repo: &Repository) -> Result<()> {
+pub(super) fn ensure_idle(repo: &Repository) -> Result<()> {
     if let Some(operation) = operation_on_disk(repo)? {
         return Err(AppError::new(
             "OPERATION_IN_PROGRESS",
@@ -822,6 +827,11 @@ fn validate_action_options(action: &GitAction) -> Result<()> {
             "includeIgnored",
             matches!(kind, "stash-save" | "clean"),
         ),
+        (
+            action.clean_preview_token.is_some(),
+            "cleanPreviewToken",
+            kind == "clean",
+        ),
         (action.global.is_some(), "global", kind == "identity"),
         (
             action.interactive.is_some(),
@@ -889,7 +899,7 @@ impl GitService {
             .map_err(redacted_error)
     }
 
-    async fn action_write(
+    pub(super) async fn action_write(
         &self,
         repo: &Repository,
         action: &GitAction,
@@ -973,7 +983,11 @@ impl GitService {
         Ok(oid)
     }
 
-    async fn action_head_branch(&self, repo: &Repository, action: &GitAction) -> Result<String> {
+    pub(super) async fn action_head_branch(
+        &self,
+        repo: &Repository,
+        action: &GitAction,
+    ) -> Result<String> {
         let output = self
             .action_read(repo, action, words(&["symbolic-ref", "--quiet", "HEAD"]))
             .await?;
@@ -986,21 +1000,8 @@ impl GitService {
 
     async fn action_clean_worktree(&self, repo: &Repository, action: &GitAction) -> Result<()> {
         ensure_worktree(repo)?;
-        let status = self
-            .run_bytes(
-                repo,
-                &action.request_id,
-                words(&[
-                    "status",
-                    "--porcelain=v1",
-                    "-z",
-                    "--untracked-files=all",
-                    "--ignore-submodules=none",
-                ]),
-                false,
-            )
-            .await?;
-        if !status.is_empty() {
+        let status = self.working_state(repo, &action.request_id).await?;
+        if !status.files.is_empty() {
             return Err(AppError::new("DIRTY_WORKTREE", "Commit, stash or otherwise preserve staged, unstaged and untracked changes first. No automatic stashing or discarding was performed."));
         }
         Ok(())
@@ -1045,7 +1046,7 @@ impl GitService {
         .await
     }
 
-    async fn action_remote_named(
+    pub(super) async fn action_remote_named(
         &self,
         repo: &Repository,
         action: &GitAction,
@@ -1142,6 +1143,8 @@ impl GitService {
         repo: &Repository,
         action: &GitAction,
     ) -> Result<Vec<String>> {
+        let _request = self.request_scope(&action.request_id)?;
+        self.check_repository_authorization(repo, &action.request_id, true)?;
         check_envelope(repo, action)?;
         if action.kind != "rebase" || action.interactive != Some(true) {
             return Err(invalid("Expected an interactive rebase action."));
@@ -1166,7 +1169,12 @@ impl GitService {
     }
 
     pub async fn action(&self, repo: &Repository, action: GitAction) -> Result<ActionResult> {
+        let _request = self.request_scope(&action.request_id)?;
+        self.check_repository_authorization(repo, &action.request_id, true)?;
         check_envelope(repo, &action)?;
+        if action.kind == "clean" {
+            return self.clean_action(repo, &action).await;
+        }
         if action.interactive == Some(true) {
             self.interactive_rebase_args(repo, &action).await?;
             return Err(AppError::new("INTERACTIVE_REBASE_REQUIRED", "Interactive rebase must run in the application's external console using interactive_rebase_args, not a background editor."));
@@ -1178,6 +1186,7 @@ impl GitService {
             operation,
             session_id: None,
             status: Some("completed".into()),
+            preview_token: None,
         })
     }
 
@@ -1488,11 +1497,9 @@ impl GitService {
                 )
                 .await
             }
-            "clean" => {
-                ensure_idle(repo)?;
-                ensure_worktree(repo)?;
-                self.action_write(repo, action, clean_args(action)?).await
-            }
+            "clean" => Err(invalid(
+                "Clean requires the native one-shot preview workflow.",
+            )),
             "continue" | "abort" => self.perform_recovery(repo, action).await,
             "commit" => self.perform_follow_up_commit(repo, action).await,
             "identity" => {
@@ -1562,7 +1569,9 @@ impl GitService {
             }
             format!("Squash summary\n\n{}\n", subjects.trim_end())
         };
-        fs::write(&path, message).map_err(|error| AppError::new("IO", format!("The squash applied, but its message could not be written: {error}. Staged changes and Git's recovery state were retained.")))
+        self.with_repository_authorization(repo, &action.request_id, true, || {
+            fs::write(&path, message).map_err(|error| AppError::new("IO", format!("The squash applied, but its message could not be written: {error}. Staged changes and Git's recovery state were retained.")))
+        })
     }
 
     async fn action_config_bool(
@@ -2597,7 +2606,7 @@ fn fetch_args(
     args
 }
 
-fn push_args(
+pub(super) fn push_args(
     remote: &str,
     local: bool,
     refspec: &str,
@@ -3110,7 +3119,7 @@ mod tests {
     }
 
     #[test]
-    fn clean_is_preview_or_explicit_single_force_never_double_force() {
+    fn clean_only_dry_runs_and_never_passes_force_to_git() {
         let mut request = action("clean");
         assert!(clean_args(&request).is_err());
         request.mode = Some("preview".into());
@@ -3125,8 +3134,10 @@ mod tests {
         request.force = Some(true);
         request.mode = Some("delete".into());
         let args = clean_args(&request).unwrap();
-        assert_eq!(args.iter().filter(|s| *s == "--force").count(), 1);
-        assert!(!args.iter().any(|s| s == "-ff"));
+        assert!(args.iter().any(|s| s == "--dry-run"));
+        assert!(!args
+            .iter()
+            .any(|s| matches!(s.as_str(), "--force" | "-f" | "-ff")));
     }
 
     #[test]

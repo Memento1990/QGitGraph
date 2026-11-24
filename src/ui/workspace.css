@@ -1,0 +1,64 @@
+/* 经确认的三栏工作区；共用应用主题，不引入额外视觉系统。 */
+.application-name { flex: 0 0 auto; font-size: 12px; padding-right: 10px; }
+.app-shell > .toolbar { min-height: 38px; padding: 4px 10px; background: var(--surface-raised); }
+.toolbar .repo-select { max-width: 200px; width: clamp(120px, 15vw, 200px); font-size: 11px; }
+.repository-sidebar { flex-basis: var(--repository-width, 376px); width: var(--repository-width, 376px); min-width: 300px; max-width: min(640px, 52vw); }
+.repository-workspace { display: flex; flex: 1 1 0; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.repository-toolbar { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; height: 40px; min-width: 0; padding: 4px 10px; border-bottom: 1px solid var(--border); background: var(--surface-raised); font-size: 12px; }
+.repository-toolbar > .icon { color: var(--text-muted); }
+.repository-toolbar-name { min-width: 0; max-width: min(32%, 250px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.repository-toolbar-branch { max-width: 220px; min-width: 70px; border-color: var(--border-subtle); }
+.repository-toolbar-branch > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.repository-toolbar-tracking { color: var(--text-muted); font-size: 10px; white-space: nowrap; }
+.repository-toolbar-count { color: var(--text-muted); font-size: 10px; }
+.workspace-tabs { display: none; flex: 0 0 auto; align-items: center; gap: 3px; min-height: 34px; padding: 0 8px; border-bottom: 1px solid var(--border); background: var(--surface-sunken); }
+.workspace-tabs .button { height: 34px; border-radius: 0; }
+.workspace-tabs .button[aria-pressed='true'] { border-bottom-color: var(--accent); color: var(--accent); }
+.workspace-panels { display: flex; flex: 1 1 0; min-width: 0; min-height: 0; overflow: hidden; }
+.workspace-panels > .local-changes { flex: 0 0 var(--local-width, 390px); width: var(--local-width, 390px); min-width: 240px; max-width: calc(100% - 300px); }
+.workspace-panels > .history-documents { display: flex; flex: 1 1 0; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.graph-surface { display: flex; flex: 1 1 0; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.graph-surface > .workspace { flex: 1 1 0; }
+.graph-surface .querybar { min-height: 35px; padding: 3px 8px; gap: 5px; font-size: 11px; }
+.graph-surface .querybar input { height: 25px; }
+.graph-surface .querybar select { max-width: 135px; font-size: 11px; }
+.graph-surface .compact-history-query > select,
+.graph-surface .compact-history-query > .button:not([hidden]) { display: none; }
+.graph-surface .compact-history-query .commit-search { max-width: none; }
+.graph-toolbar-actions > .checkbox { flex: 0 0 auto; gap: 5px; font-size: 10px; white-space: nowrap; color: var(--text-muted); }
+.graph-toolbar-actions { display: flex; align-items: center; gap: 3px; min-width: 0; margin-left: auto; }
+.graph-toolbar-actions .branch-select { width: auto; max-width: 160px; min-width: 90px; font-size: 11px; }
+.graph-toolbar-actions .branch-select > span { overflow: hidden; text-overflow: ellipsis; }
+.graph-surface .history-container { min-width: 0; }
+.branch-picker-dialog { width: min(520px, 90vw); }
+.branch-picker-dialog input { width: 100%; }
+.branch-picker-repository { margin-bottom: 9px; font-weight: 600; }
+.branch-picker-list { display: flex; flex-direction: column; max-height: 50vh; overflow: auto; min-height: 100px; }
+.branch-picker-group { flex: 0 0 auto; padding: 7px 5px 4px; color: var(--text-muted); font-size: 11px; }
+.branch-picker-row { flex: 0 0 auto; justify-content: flex-start; min-height: 30px; width: 100%; border-radius: 0; }
+.branch-picker-row > span:first-of-type { overflow: hidden; text-overflow: ellipsis; }
+.branch-picker-row .muted { margin-left: auto; font-size: 10px; }
+.branch-picker-row.is-current { background: var(--selected); }
+@media (max-width: 1279px) {
+  .workspace-tabs { display: flex; }
+  .workspace-panels.has-local-changes[data-active-tab='local'] > .history-documents { display: none; }
+  .workspace-panels.has-local-changes[data-active-tab='history'] > .local-changes,
+  .workspace-panels.has-local-changes[data-active-tab='history'] > .resize-handle { display: none; }
+  .workspace-panels > .local-changes { flex: 1 1 0; width: 100%; max-width: none; }
+  .workspace-panels > .resize-handle.vertical { display: none; }
+  .repository-toolbar-name { max-width: 28%; }
+  .querybar .order-select, .querybar .commit-search + select { display: none; }
+  .repository-toolbar-sync > span, .repository-toolbar-commit > span { display: none; }
+}
+@media (max-width: 900px) {
+  .repository-sidebar { max-width: 45vw; }
+  .repository-toolbar { gap: 4px; padding-inline: 8px; }
+  .repository-toolbar-name { max-width: 30%; font-size: 11px; }
+  .repository-toolbar-tracking { display: none; }
+  .repository-toolbar-branch { max-width: 110px; min-width: 60px; font-size: 11px; }
+  .toolbar .repo-select { display: none; }
+  .graph-toolbar-actions > .checkbox { display: none; }
+  .graph-surface .querybar .commit-search { min-width: 75px; }
+  .graph-surface .querybar .branch-select { min-width: 65px; max-width: 105px; }
+  .querybar .order-select, .querybar > select, .querybar > .spacer { display: none; }
+}

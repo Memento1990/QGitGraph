@@ -1,9 +1,12 @@
-import type { AppSettings, ChangedFile, CommitDetail, DiffQuery, DiffResult, Host, Repository, ReviewTarget, WorkingState } from '../shared/protocol';
+import type { AppSettings, ChangedFile, CommitDetail, DiffQuery, DiffResult, Host, Repository, ReviewTarget, VerificationResult, WorkingState } from '../shared/protocol';
 import { cacheableDiff, detailBytes, diffBytes, diffCacheKey, FileTreeCache, fileWindow, immutableSelection, type ContentSide, type FileNode } from '../lib/diff';
-import { commitDate, errorMessage, formatDate, isImmutableOid, LruCache, shortOid } from '../lib/format';
+import { commitDate, dateText, errorText, isImmutableOid, LruCache, numberText, shortOid } from '../lib/format';
+import { m } from '../i18n/history';
+import { m as detailMessage } from '../i18n/commit-details';
+import './details.css';
 import { Requests, type StateStore } from '../lib/state';
 import { performanceDiagnostics as perf, type PerformanceContext, type PerformanceOutcome } from '../lib/performance';
-import { badge, button, checkbox, contextMenu, el, empty, loading, menuAtButton, resizer, select, textDialog, type MenuItem } from './dom';
+import { badge, button, checkbox, contextMenu, disposeBindings, el, empty, loading, menuAtButton, resizer, select, setAttribute, textDialog, type MenuItem } from './dom';
 import { DiffView, type DiffViewState } from './diff-view';
 import { icon } from './icons';
 import { renderMessage } from './message';
@@ -11,14 +14,23 @@ import { renderMessage } from './message';
 export type DetailSelection = { kind: 'commit'; oid: string; parent?: string } | { kind: 'working' } | { kind: 'compare'; base: string; target: string };
 export interface DetailViewSnapshot {
   selection: DetailSelection; path?: string; scrollTop?: number; collapsed?: string[];
-  filesScrollTop?: number; fileFilter?: string; workingMode?: 'all' | 'staged' | 'unstaged'; diff?: DiffViewState;
+  filesScrollTop?: number; filesScrollLeft?: number; fullMessage?: boolean; inlineSide?: 'above' | 'below'; activeNode?: string;
+  fileFilter?: string; workingMode?: 'all' | 'staged' | 'unstaged'; diff?: DiffViewState;
 }
+export interface HistoryFileRequest {
+  repo: Repository; selection: Exclude<DetailSelection, { kind: 'working' }>;
+  files: readonly ChangedFile[]; path: string; subject?: string;
+}
+export interface DetailsOptions { mode?: 'legacy' | 'history' }
 interface DetailsContext { repo: Repository | null; settings: AppSettings; working: WorkingState | null }
 export interface DetailCallbacks {
   context: () => DetailsContext; settings: (patch: Partial<AppSettings>) => void; error: (error: unknown) => void;
   copy: (text: string) => void; action: (name: 'commit' | 'stash-save' | 'reset') => void;
   close: () => void; follow: (oid: string) => void; ensureTrust: () => Promise<boolean>;
   openUrl: (url: string) => void; changed?: () => void;
+  /** Metadata/file-tree mode never loads a patch itself. Successful document opens mark review paths. */
+  openHistoryFile?: (request: HistoryFileRequest) => void | Promise<void>;
+  heightChanged?: (height: number) => void;
 }
 interface VisibleFileNode { key: string; path: string; name: string; file?: ChangedFile; level: number; parent?: string; expanded?: boolean; position: number; siblings: number }
 type LoadStatus = 'idle' | 'loading' | 'ready' | 'error' | 'cancelled';
@@ -28,6 +40,7 @@ export class DetailsPane {
   readonly element = el('section', 'details-pane');
   private header = el('div', 'detail-header');
   private metadata = el('div', 'commit-metadata');
+  private historyInfo = el('div', 'history-detail-info-content');
   private body = el('div', 'detail-body');
   private filesPane = el('aside', 'files-pane');
   private fileToolbar = el('div', 'file-toolbar');
@@ -77,11 +90,22 @@ export class DetailsPane {
   private displayedResult: DiffResult | null = null;
   private fileSize: number;
   private lastRepo = '';
-  private verification: string | null = null;
+  private verification: VerificationResult['status'] | null = null;
+  private legacySplitter: HTMLElement;
+  private historySplitter: HTMLElement;
+  private heightSplitter: HTMLElement;
+  private measureObserver: ResizeObserver;
+  private measureFrame = 0;
+  private measuredHeight = 320;
+  private fullMessage = false;
+  private inlineSide: 'above' | 'below' = 'below';
+  private historyRatio = 0.55;
+  private snapshots = new LruCache<DetailViewSnapshot>(96, 2 * 1024 * 1024);
+  private destroyed = false;
 
-  constructor(private readonly host: Host, private readonly store: StateStore, private readonly callbacks: DetailCallbacks) {
+  constructor(private readonly host: Host, private readonly store: StateStore, private readonly callbacks: DetailCallbacks, private readonly options: DetailsOptions = {}) {
     this.requests = new Requests(id => host.cancel(id)); this.fileSize = store.state.layout.fileSize;
-    this.fileList.tabIndex = 0; this.fileList.setAttribute('role', 'tree'); this.fileList.setAttribute('aria-label', 'Changed files');
+    this.fileList.tabIndex = 0; this.fileList.setAttribute('role', 'tree'); setAttribute(this.fileList, 'aria-label', m('details.changedFiles'));
     this.fileList.addEventListener('keydown', event => this.fileKeydown(event));
     this.fileList.addEventListener('scroll', () => { this.scheduleFiles(); callbacks.changed?.(); });
     this.filesObserver = new ResizeObserver(() => this.scheduleFiles()); this.filesObserver.observe(this.fileList);
@@ -90,14 +114,56 @@ export class DetailsPane {
     const splitter = resizer('vertical', () => this.fileSize, (value, final) => {
       this.fileSize = value; this.element.style.setProperty('--files-width', `${value}px`);
       if (final) { store.state.layout.fileSize = value; store.queue(); }
-    }, 150, () => Math.min(700, this.element.clientWidth * 0.55), false, 'Resize changed-files pane');
+    }, 150, () => Math.min(700, this.element.clientWidth * 0.55), false, m('details.resizeFiles'));
+    this.legacySplitter = splitter;
+    this.historyRatio = this.store.state.layout.detailRatio ?? 0.55;
+    this.historySplitter = resizer('vertical', () => this.historyWidth() * this.historyRatio, (value, final) => {
+      this.historyRatio = Math.max(0.25, Math.min(0.8, value / this.historyWidth())); this.applyHistoryRatio(); this.measure();
+      if (final) { this.store.state.layout.detailRatio = this.historyRatio; this.store.queue(); this.callbacks.changed?.(); }
+    }, 190, () => Math.max(190, this.historyWidth() - 195), false, detailMessage('details.resizeColumns'));
+    this.historySplitter.classList.add('history-detail-width-resizer');
+    this.heightSplitter = resizer('horizontal', () => this.store.state.layout.detailSize, (value, final) => {
+      this.store.state.layout.detailSize = value; this.measure();
+      if (final) { this.store.queue(); this.callbacks.changed?.(); }
+    }, 190, () => 1200, false, detailMessage('details.resizeHeight'));
+    this.heightSplitter.classList.add('history-detail-height-resizer'); this.heightSplitter.hidden = true;
     this.diffView = new DiffView(view => { callbacks.settings({ diffView: view }); }, text => callbacks.copy(text));
     this.diffView.element.addEventListener('scroll', () => callbacks.changed?.(), true);
     this.body.append(this.filesPane, splitter, this.diffPane); this.element.append(this.header, this.metadata, this.body);
-    this.element.style.setProperty('--files-width', `${this.fileSize}px`); this.element.setAttribute('aria-label', 'Commit details');
+    this.measureObserver = new ResizeObserver(() => this.scheduleMeasure()); this.measureObserver.observe(this.historyInfo); this.measureObserver.observe(this.element);
+    this.element.style.setProperty('--files-width', `${this.fileSize}px`); setAttribute(this.element, 'aria-label', m('details.label'));
   }
+  private get historyMode(): boolean { return this.options.mode === 'history' && this.selection?.kind !== 'working'; }
+  private historyWidth(): number { return Math.max(390, this.body.clientWidth || this.element.clientWidth || 720); }
+  private applyHistoryRatio(): void { this.element.style.setProperty('--detail-info-width', `${this.historyRatio * 100}%`); }
+  private configureLayout(): void {
+    const history = this.historyMode; this.element.classList.toggle('history-details', history); this.element.tabIndex = history ? 0 : -1;
+    this.heightSplitter.hidden = !history;
+    if (history) {
+      if (this.metadata.parentElement !== this.body) this.body.replaceChildren(this.metadata, this.historySplitter, this.filesPane);
+      if (this.heightSplitter.parentElement !== this.element) this.element.append(this.heightSplitter);
+      this.applyHistoryRatio(); this.element.dataset.inlineSide = this.inlineSide; this.scheduleMeasure();
+    } else {
+      if (this.metadata.parentElement !== this.element) { this.body.replaceChildren(this.filesPane, this.legacySplitter, this.diffPane); this.element.replaceChildren(this.header, this.metadata, this.body); }
+      this.body.style.height = ''; this.element.style.removeProperty?.('--history-detail-height');
+    }
+  }
+  /** Stable height owned by history geometry, not a nested metadata scroll area. */
+  get preferredHeight(): number { return this.historyMode ? this.measuredHeight : this.store.state.layout.detailSize; }
+  measure(): number {
+    if (!this.historyMode || this.destroyed || this.element.hidden) return this.preferredHeight;
+    const contentHeight = (this.historyInfo.scrollHeight || this.historyInfo.getBoundingClientRect().height || 0) + 20;
+    const base = Math.max(190, this.store.state.layout.detailSize || 320), height = Math.ceil(Math.max(base, contentHeight + 37));
+    this.body.style.height = `${height - 37}px`; this.element.style.setProperty('--history-detail-height', `${height}px`);
+    if (height !== this.measuredHeight) { this.measuredHeight = height; this.callbacks.heightChanged?.(height); }
+    return height;
+  }
+  private scheduleMeasure(): void { if (this.historyMode && !this.measureFrame) this.measureFrame = requestAnimationFrame(() => { this.measureFrame = 0; this.measure(); }); }
+  setInlineSide(side: 'before' | 'after' | 'above' | 'below'): void { this.inlineSide = side === 'before' || side === 'above' ? 'above' : 'below'; this.element.dataset.inlineSide = this.inlineSide; }
+  private snapshotKey(repoId: string, selection: DetailSelection): string { return JSON.stringify([repoId, selection]); }
+  private remember(): void { const snapshot = this.view; if (snapshot && this.lastRepo && this.detailStatus === 'ready') this.snapshots.set(this.snapshotKey(this.lastRepo, snapshot.selection), snapshot); }
   get view(): DetailViewSnapshot | null {
-    return this.selection ? { selection: structuredClone(this.selection), path: this.selectedFile ?? undefined, scrollTop: this.metadata.scrollTop, collapsed: [...this.collapsed], filesScrollTop: this.fileList.scrollTop, fileFilter: this.fileFilter, workingMode: this.workingMode, diff: this.diffView.getState() } : null;
+    return this.selection ? { selection: structuredClone(this.selection), path: this.selectedFile ?? undefined, scrollTop: this.metadata.scrollTop, collapsed: [...this.collapsed], filesScrollTop: this.fileList.scrollTop, filesScrollLeft: this.fileList.scrollLeft, fullMessage: this.fullMessage, inlineSide: this.inlineSide, activeNode: this.activeNode, fileFilter: this.fileFilter, workingMode: this.workingMode, ...(this.historyMode ? {} : { diff: this.diffView.getState() }) } : null;
   }
   show(selection: DetailSelection, force = false, restore?: Partial<DetailViewSnapshot>, performanceContext?: PerformanceContext): Promise<void> {
     const repo = this.callbacks.context().repo; if (!repo) return Promise.resolve();
@@ -123,14 +189,17 @@ export class DetailsPane {
     const metadataSpan = operation.span('metadata');
     try {
     const same = JSON.stringify(this.selection) === JSON.stringify(selection) && this.lastRepo === repo.id;
-    const saved = restore ?? (force && same ? this.view ?? undefined : undefined);
+    this.remember();
+    const saved = restore ?? (force && same ? this.view ?? undefined : this.snapshots.get(this.snapshotKey(repo.id, selection)));
     this.requests.cancelAll(); this.contentGeneration++; const epoch = ++this.epoch;
     this.detailStatus = 'loading'; this.diffStatus = 'idle'; this.diffPending = null; this.activeDiffKey = ''; this.contentPending = null;
     this.loadedSides.clear(); this.sideContents = {}; this.filteredCache = null; this.preparedFiles = null; this.collapseRevision++;
     this.lastRepo = repo.id; this.selection = structuredClone(selection); this.detail = null; this.displayedResult = null; this.verification = null;
-    this.files = []; this.selectedFile = null; this.fileFilter = saved?.fileFilter ?? ''; this.workingMode = saved?.workingMode ?? 'all'; this.collapsed = new Set(saved?.collapsed ?? []); this.activeNode = '';
+    this.files = []; this.selectedFile = null; this.fileFilter = saved?.fileFilter ?? ''; this.workingMode = saved?.workingMode ?? 'all'; this.collapsed = new Set(saved?.collapsed ?? []); this.activeNode = saved?.activeNode ?? '';
+    this.fullMessage = saved?.fullMessage ?? false; if (restore?.inlineSide) this.inlineSide = restore.inlineSide;
+    this.configureLayout();
     this.fileSize = this.store.state.layout.fileSize; this.element.style.setProperty('--files-width', `${this.fileSize}px`);
-    this.element.hidden = false; this.metadata.hidden = false; this.metadata.replaceChildren(loading('Loading details…', () => this.cancel()));
+    this.element.hidden = false; this.metadata.hidden = false; this.metadata.replaceChildren(loading(m('details.loading'), () => this.cancel()));
     this.fileList.replaceChildren(); this.renderedNodes.clear(); this.visibleNodes = []; this.fileList.scrollTop = 0; this.diffHeader.replaceChildren(); this.diffView.clear(); this.diffContainer.replaceChildren(); this.renderHeader();
     const request = this.requests.begin('detail'); operation.request(request.id);
     try {
@@ -153,20 +222,24 @@ export class DetailsPane {
       metadataSpan.end({ requestId: request.id, cacheHit, count: this.files.length, outcome });
       operation.paint('file-list-paint-opportunity', { requestId: request.id, count: this.files.length, cacheHit });
       const filtered = this.filteredFiles(), first = filtered.find(file => file.path === saved?.path) ?? filtered[0];
-      if (first) await this.selectFile(first.path, saved?.diff, operation.context);
-      else this.diffContainer.replaceChildren(empty(selection.kind === 'working' ? context.working === null ? 'Working tree status is not loaded yet' : 'Working tree is clean' : 'No changed files', selection.kind === 'commit' && this.detail?.commit.parents.length ? 'Choose another parent to inspect that comparison.' : undefined));
+      if (this.historyMode) {
+        this.selectedFile = saved?.path && this.fileAt(saved.path) ? saved.path : null;
+        this.activeNode = saved?.activeNode ?? (this.selectedFile ? `file:${this.selectedFile}` : this.visibleNodes[0]?.key ?? ''); this.updateFileRows();
+      } else if (first) await this.selectFile(first.path, saved?.diff, operation.context);
+      else this.diffContainer.replaceChildren(empty(selection.kind === 'working' ? context.working === null ? m('details.statusNotLoaded') : m('details.clean') : m('details.noChangedFiles'), selection.kind === 'commit' && this.detail?.commit.parents.length ? m('details.chooseParent') : undefined));
       if (this.epoch !== epoch || this.callbacks.context().repo?.id !== repo.id) { outcome = 'stale'; return; }
       const diffStatus = this.currentDiffStatus(); if (diffStatus === 'error' || diffStatus === 'cancelled') outcome = diffStatus;
-      this.metadata.scrollTop = saved?.scrollTop ?? 0; this.fileList.scrollTop = saved?.filesScrollTop ?? 0; this.renderFileWindow();
-      this.callbacks.changed?.();
+      this.metadata.scrollTop = this.historyMode ? 0 : saved?.scrollTop ?? 0; this.fileList.scrollTop = saved?.filesScrollTop ?? 0; this.fileList.scrollLeft = saved?.filesScrollLeft ?? 0; this.renderFileWindow();
+      if (this.historyMode) this.measure(); this.callbacks.changed?.();
     } catch (error) {
       outcome = this.current(request, epoch, repo.id) ? 'error' : 'cancelled';
-      if (this.current(request, epoch, repo.id)) { this.detailStatus = 'error'; this.metadata.replaceChildren(el('div', 'inline-error', errorMessage(error), button('Retry', () => { void this.show(selection, true); }, 'refresh'))); this.callbacks.error(error); }
+      if (this.current(request, epoch, repo.id)) { this.detailStatus = 'error'; this.metadata.replaceChildren(el('div', 'inline-error', errorText(error), button(m('details.retry'), () => { void this.show(selection, true); }, 'refresh'))); this.callbacks.error(error); }
     } finally { request.finish(); }
     } finally { metadataSpan.end({ outcome, cacheHit }); operation.end({ outcome, cacheHit, count: this.files.length }); }
   }
   private current(request: { current: () => boolean }, epoch: number, repoId: string): boolean { return request.current() && this.epoch === epoch && this.callbacks.context().repo?.id === repoId; }
   clear(): void {
+    this.remember();
     this.requests.cancelAll(); this.contentGeneration++; this.epoch++; this.detailStatus = 'idle'; this.diffStatus = 'idle'; this.showPending = null; this.diffPending = null; this.contentPending = null;
     this.selection = null; this.detail = null; this.displayedResult = null; this.loadedSides.clear(); this.sideContents = {}; this.diffView.clear(); this.element.hidden = true;
   }
@@ -174,9 +247,12 @@ export class DetailsPane {
   /** Explicit refresh also supports immutable selections after mailmap/config invalidation. */
   refresh(): void { if (this.selection) void this.show(this.selection, true); }
   private currentDiffStatus(): LoadStatus { return this.diffStatus; }
+  /** Locale bindings update owned text/attributes in place; never enter selection/settings/load paths. */
+  updateLocale(): void { this.diffView.updateLocale(); }
   updateSettings(): void {
     this.fileSize = this.store.state.layout.fileSize; this.element.style.setProperty('--files-width', `${this.fileSize}px`);
     if (!this.selection) return;
+    this.historyRatio = this.store.state.layout.detailRatio ?? .55; this.configureLayout();
     const settings = this.callbacks.context().settings;
     this.element.classList.toggle('details-right', settings.detailPosition === 'right');
     if (this.detailStatus !== 'ready') { this.renderHeader(); return; }
@@ -192,70 +268,110 @@ export class DetailsPane {
   }
   private cancel(): void {
     this.requests.cancelAll(); this.contentGeneration++; this.epoch++; this.detailStatus = 'cancelled'; this.diffStatus = 'cancelled'; this.diffView.clear(); this.displayedResult = null;
-    this.metadata.replaceChildren(empty('Details loading cancelled'), button('Retry', () => { if (this.selection) void this.show(this.selection, true); }, 'refresh'));
+    this.metadata.replaceChildren(empty(m('details.cancelled')), button(m('details.retry'), () => { if (this.selection) void this.show(this.selection, true); }, 'refresh'));
   }
   private renderHeader(): void {
     const selection = this.selection; if (!selection) return;
-    const title = selection.kind === 'commit' ? `Commit ${shortOid(selection.oid)}` : selection.kind === 'working' ? 'Working tree' : `${shortOid(selection.base)} → ${shortOid(selection.target)}`;
+    const title = selection.kind === 'commit' ? m('details.commit', { oid: shortOid(selection.oid) }) : selection.kind === 'working' ? m('table.workingTree') : `${shortOid(selection.base)} → ${shortOid(selection.target)}`;
     const position = this.callbacks.context().settings.detailPosition;
     this.header.replaceChildren(el('strong', 'detail-title', title));
-    if (selection.kind === 'compare') this.header.append(badge('Comparison'));
+    if (selection.kind === 'compare') this.header.append(badge(m('details.comparison')));
     this.header.append(el('span', 'spacer'));
     if (this.canReview()) {
       const key = this.reviewKey(), session = this.store.state.reviews.find(item => item.key === key && item.repoId === this.lastRepo), active = this.store.isReviewActive(key, this.lastRepo);
-      const review = button(active ? 'Review active' : session ? 'Resume review' : 'Start review', () => {
-        if (active) menuAtButton(review, [{ label: 'End this review', icon: 'stop', dataAction: 'end-review', action: () => { this.store.endReview(key, this.lastRepo); this.renderReview(); } }, { label: 'End all reviews in repository', dataAction: 'end-all-reviews', action: () => { this.store.endAllReviews(this.lastRepo); this.renderReview(); } }]);
+      const review = button(active ? m('review.active') : session ? m('review.resume') : m('review.start'), () => {
+        if (active) menuAtButton(review, [{ label: m('review.endThis'), icon: 'stop', dataAction: 'end-review', action: () => { this.store.endReview(key, this.lastRepo); this.renderReview(); } }, { label: m('review.endAll'), dataAction: 'end-all-reviews', action: () => { this.store.endAllReviews(this.lastRepo); this.renderReview(); } }]);
         else { this.store.startReview(key, this.lastRepo, this.reviewTarget()!); this.renderReview(); }
       }, active ? 'check' : 'eye', active ? 'active review-control' : 'review-control');
       review.dataset.action = active ? 'review-menu' : session ? 'resume-review' : 'start-review'; review.setAttribute('aria-pressed', String(active)); this.header.append(review);
-      if (active) this.header.append(button('End review', () => { this.store.endReview(key, this.lastRepo); this.renderReview(); }, 'stop', '', true));
+      if (active) this.header.append(button(m('review.end'), () => { this.store.endReview(key, this.lastRepo); this.renderReview(); }, 'stop', '', true));
     }
-    if (selection.kind === 'commit') this.header.append(button('Copy commit ID', () => this.callbacks.copy(selection.oid), 'copy', '', true));
-    const move = button('Details position', () => menuAtButton(move, (['inline', 'bottom', 'right'] as const).map(value => ({ label: `${value[0].toUpperCase()}${value.slice(1)}`, checked: value === position, action: () => this.callbacks.settings({ detailPosition: value }) }))), position === 'right' ? 'split' : 'unified', '', true);
-    this.header.append(move, button('Close details (Escape)', () => this.callbacks.close(), 'close', '', true));
+    if (selection.kind === 'commit') this.header.append(button(m('details.copyCommit'), () => this.callbacks.copy(selection.oid), 'copy', '', true));
+    const move = button(m('details.position'), () => menuAtButton(move, (['inline', 'bottom', 'right'] as const).map(value => ({ label: m(`details.position.${value}`), checked: value === position, action: () => this.callbacks.settings({ detailPosition: value }) }))), position === 'right' ? 'split' : 'unified', '', true);
+    this.header.append(move, button(m('details.close'), () => this.callbacks.close(), 'close', '', true));
   }
   private renderMetadata(): void {
+    if (this.historyMode) { this.renderHistoryMetadata(); return; }
     const previousScroll = this.metadata.scrollTop; this.metadata.replaceChildren(); this.metadata.hidden = false;
     if (this.selection?.kind === 'commit' && this.detail) {
       const detail = this.detail, commit = detail.commit, settings = this.callbacks.context().settings;
       const subject = renderMessage(commit.subject, settings, this.callbacks.openUrl); subject.classList.add('detail-subject');
-      const summary = el('div', 'detail-summary', el('span', '', `${commit.author} <${commit.email}>`), el('span', 'muted', formatDate(commitDate(commit, settings.dateSource), settings.dateFormat)), el('span', 'mono muted', commit.oid));
-      summary.title = `Authored: ${formatDate(commit.authoredAt, 'local')}\nCommitted: ${formatDate(commit.committedAt, 'local')}`;
-      if (detail.committer && (detail.committer !== commit.author || detail.committerEmail !== commit.email)) summary.append(el('span', 'muted', `Committed by ${detail.committer} <${detail.committerEmail}>`));
+      const summary = el('div', 'detail-summary', el('span', '', `${commit.author} <${commit.email}>`), el('span', 'muted', dateText(commitDate(commit, settings.dateSource), settings.dateFormat)), el('span', 'mono muted', commit.oid));
+      setAttribute(summary, 'title', m('details.dates', { authored: dateText(commit.authoredAt, 'local'), committed: dateText(commit.committedAt, 'local') }));
+      if (detail.committer && (detail.committer !== commit.author || detail.committerEmail !== commit.email)) summary.append(el('span', 'muted', m('details.committer', { name: detail.committer, email: detail.committerEmail })));
       if (settings.signatureDisplay) {
         const present = detail.signature.status && !['N', 'none', 'unsigned'].includes(detail.signature.status);
-        summary.append(badge(this.verification ?? (present ? 'Signature present · not verified' : 'Unsigned'), '', `${detail.signature.signer} ${detail.signature.key}`));
+        summary.append(badge(this.verification ? m('signature.label', { status: m(`signature.${this.verification}`) }) : present ? m('details.signaturePresent') : m('details.unsigned'), '', `${detail.signature.signer} ${detail.signature.key}`));
       }
-      const verify = button('Verify signature…', () => { void this.verifySignature(commit.oid); }, 'shield', 'text-button'); verify.dataset.action = 'verify-commit'; summary.append(verify);
+      const verify = button(m('details.verifySignature'), () => { void this.verifySignature(commit.oid); }, 'shield', 'text-button'); verify.dataset.action = 'verify-commit'; summary.append(verify);
       this.metadata.append(subject, summary);
-      if (detail.body && detail.body !== commit.subject) { const body = el('details', 'message-body'); body.append(el('summary', '', 'Full message'), renderMessage(detail.body, settings, this.callbacks.openUrl)); this.metadata.append(body); }
+      if (detail.body && detail.body !== commit.subject) { const body = el('details', 'message-body'); body.append(el('summary', '', m('details.fullMessage')), renderMessage(detail.body, settings, this.callbacks.openUrl)); this.metadata.append(body); }
       if (commit.parents.length) {
-        const parentRow = el('div', 'parent-row', el('span', 'muted', commit.parents.length > 1 ? 'Compare with parent' : 'Parent'));
-        if (commit.parents.length > 1) parentRow.append(select(commit.parents.map((parent, index) => ({ value: parent, label: `${index + 1}: ${shortOid(parent)}` })), detail.base ?? commit.parents[0], 'Merge parent', parent => { void this.show({ kind: 'commit', oid: commit.oid, parent }, true); }));
+        const parentRow = el('div', 'parent-row', el('span', 'muted', commit.parents.length > 1 ? m('details.compareParent') : m('details.parent')));
+        if (commit.parents.length > 1) parentRow.append(select(commit.parents.map((parent, index) => ({ value: parent, label: `${index + 1}: ${shortOid(parent)}` })), detail.base ?? commit.parents[0], m('details.mergeParent'), parent => { void this.show({ kind: 'commit', oid: commit.oid, parent }, true); }));
         for (const parent of commit.parents) parentRow.append(button(shortOid(parent), () => this.callbacks.follow(parent), 'commit', 'text-button'));
         this.metadata.append(parentRow);
       }
-    } else if (this.selection?.kind === 'compare') this.metadata.append(el('div', 'detail-summary', el('span', 'mono', `${this.selection.base} → ${this.selection.target}`), el('span', 'muted', immutableSelection(this.selection) ? 'Immutable comparison · Control / Command or Shift select to change target.' : 'Mutable comparison · caching and review tracking are disabled.')));
+    } else if (this.selection?.kind === 'compare') this.metadata.append(el('div', 'detail-summary', el('span', 'mono', `${this.selection.base} → ${this.selection.target}`), el('span', 'muted', immutableSelection(this.selection) ? m('details.immutableComparison') : m('details.mutableComparison'))));
     else if (this.selection?.kind === 'working') {
       const working = this.callbacks.context().working;
-      this.metadata.append(el('div', 'detail-summary', el('span', '', working === null ? 'Working tree status is not loaded yet' : `${this.files.length} changed files`), el('span', 'muted', working === null ? 'Ahead / behind unknown' : `${working.ahead} ahead · ${working.behind} behind`), el('span', 'muted', 'Read-only inspection; stage or resolve files in your terminal/editor.')));
-      const controls = el('div', 'working-controls', select([{ value: 'all', label: 'All changes · HEAD → working tree' }, { value: 'staged', label: 'Staged · HEAD → index' }, { value: 'unstaged', label: 'Unstaged · index → working tree' }], this.workingMode, 'Working changes', value => {
+      this.metadata.append(el('div', 'detail-summary', el('span', '', working === null ? m('details.statusNotLoaded') : m('table.changedFiles', { count: numberText(this.files.length) })), el('span', 'muted', working === null ? m('details.aheadBehindUnknown') : m('details.aheadBehind', { ahead: numberText(working.ahead), behind: numberText(working.behind) })), el('span', 'muted', m('details.readOnlyWorking'))));
+      const controls = el('div', 'working-controls', select([{ value: 'all', label: m('details.workingAll') }, { value: 'staged', label: m('details.workingStaged') }, { value: 'unstaged', label: m('details.workingUnstaged') }], this.workingMode, m('details.workingChanges'), value => {
         this.workingMode = value as typeof this.workingMode; this.renderFiles(); const filtered = this.filteredFiles(), first = filtered.find(file => file.path === this.selectedFile) ?? filtered[0];
-        if (first) void this.selectFile(first.path); else { this.requests.cancel('diff'); this.cancelContent(); this.diffStatus = 'idle'; this.selectedFile = null; this.displayedResult = null; this.activeDiffKey = ''; this.diffView.clear(); this.diffContainer.replaceChildren(empty('No files in this view')); this.renderDiffHeader(); } this.callbacks.changed?.();
-      }), button('Open terminal', () => { void this.external(() => this.host.openTerminal(this.lastRepo)); }, 'terminal'));
+        if (first) void this.selectFile(first.path); else { this.requests.cancel('diff'); this.cancelContent(); this.diffStatus = 'idle'; this.selectedFile = null; this.displayedResult = null; this.activeDiffKey = ''; this.diffView.clear(); this.diffContainer.replaceChildren(empty(m('details.noFilesInView'))); this.renderDiffHeader(); } this.callbacks.changed?.();
+      }), button(m('details.openTerminal'), () => { void this.external(() => this.host.openTerminal(this.lastRepo)); }, 'terminal'));
       const hidden = this.callbacks.context().settings.hiddenActions;
-      if (!hidden.includes('commit')) controls.append(button('Commit staged…', () => this.callbacks.action('commit'), 'commit'));
-      if (!hidden.includes('stash-save')) controls.append(button('Stash…', () => this.callbacks.action('stash-save'), 'stash'));
-      if (!hidden.includes('reset')) controls.append(button('Reset working tree…', () => this.callbacks.action('reset'), 'undo', 'danger-text'));
+      if (!hidden.includes('commit')) controls.append(button(m('details.commitStaged'), () => this.callbacks.action('commit'), 'commit'));
+      if (!hidden.includes('stash-save')) controls.append(button(m('details.stash'), () => this.callbacks.action('stash-save'), 'stash'));
+      if (!hidden.includes('reset')) controls.append(button(m('details.resetWorking'), () => this.callbacks.action('reset'), 'undo', 'danger-text'));
       this.metadata.append(controls);
     }
     this.metadata.scrollTop = previousScroll;
+  }
+  private renderHistoryMetadata(): void {
+    this.metadata.hidden = false; this.historyInfo.replaceChildren(); this.metadata.replaceChildren(this.historyInfo);
+    const settings = this.callbacks.context().settings;
+    if (this.selection?.kind === 'commit' && this.detail) {
+      const detail = this.detail, commit = detail.commit;
+      const subject = renderMessage(commit.subject, settings, this.callbacks.openUrl); subject.classList.add('detail-subject');
+      const facts = el('dl', 'history-detail-facts');
+      const fact = (label: 'details.author' | 'details.date' | 'details.oid' | 'details.committer' | 'details.parents', value: HTMLElement): void => { facts.append(el('dt', '', detailMessage(label)), el('dd', '', value)); };
+      fact('details.author', el('span', '', `${commit.author} <${commit.email}>`));
+      const date = el('span', '', dateText(commitDate(commit, settings.dateSource), settings.dateFormat));
+      setAttribute(date, 'title', m('details.dates', { authored: dateText(commit.authoredAt, 'local'), committed: dateText(commit.committedAt, 'local') })); fact('details.date', date);
+      fact('details.oid', el('span', 'mono', commit.oid));
+      if (detail.committer && (detail.committer !== commit.author || detail.committerEmail !== commit.email)) fact('details.committer', el('span', '', `${detail.committer} <${detail.committerEmail}>`));
+      if (commit.parents.length) {
+        const parents = el('div', 'parent-row');
+        if (commit.parents.length > 1) parents.append(select(commit.parents.map((parent, index) => ({ value: parent, label: `${index + 1}: ${shortOid(parent)}` })), detail.base ?? commit.parents[0], m('details.mergeParent'), parent => { void this.show({ kind: 'commit', oid: commit.oid, parent }, true); }));
+        for (const parent of commit.parents) parents.append(button(shortOid(parent), () => this.callbacks.follow(parent), 'commit', 'text-button'));
+        fact('details.parents', parents);
+      }
+      const signature = el('div', 'history-detail-signature');
+      if (settings.signatureDisplay) {
+        const present = detail.signature.status && !['N', 'none', 'unsigned'].includes(detail.signature.status);
+        signature.append(badge(this.verification ? m('signature.label', { status: m(`signature.${this.verification}`) }) : present ? m('details.signaturePresent') : m('details.unsigned'), '', `${detail.signature.signer} ${detail.signature.key}`));
+      }
+      const verify = button(m('details.verifySignature'), () => { void this.verifySignature(commit.oid); }, 'shield', 'text-button'); verify.dataset.action = 'verify-commit'; signature.append(verify);
+      this.historyInfo.append(subject, facts, signature);
+      if (detail.body && detail.body !== commit.subject) {
+        const message = renderMessage(detail.body, settings, this.callbacks.openUrl); message.classList.add('history-detail-message'); message.hidden = !this.fullMessage; message.id = `commit-message-${encodeURIComponent(commit.oid)}`;
+        const expand = button(detailMessage(this.fullMessage ? 'details.collapseMessage' : 'details.expandMessage'), () => {
+          this.fullMessage = !this.fullMessage; this.renderHistoryMetadata(); this.measure(); this.callbacks.changed?.();
+        }, undefined, 'history-message-toggle');
+        expand.setAttribute('aria-expanded', String(this.fullMessage)); expand.setAttribute('aria-controls', message.id); expand.dataset.action = 'toggle-full-message';
+        this.historyInfo.append(message, expand);
+      }
+    } else if (this.selection?.kind === 'compare') {
+      this.historyInfo.append(el('div', 'detail-subject mono', `${this.selection.base} → ${this.selection.target}`), el('p', 'muted', immutableSelection(this.selection) ? m('details.immutableComparison') : m('details.mutableComparison')));
+    }
+    this.scheduleMeasure();
   }
   private async verifySignature(oid: string): Promise<void> {
     const repoId = this.lastRepo, epoch = this.epoch;
     if (!await this.callbacks.ensureTrust() || this.lastRepo !== repoId || this.epoch !== epoch) return;
     const request = this.requests.begin('verify');
-    try { const result = await this.host.verify({ repoId, requestId: request.id, kind: 'commit', target: oid }); if (!this.current(request, epoch, repoId)) return; this.verification = `Signature: ${result.status}`; this.renderMetadata(); await textDialog('Commit signature verification', `${result.status}\nSigner: ${result.signer || '—'}\nKey: ${result.key || '—'}\n\n${result.output}`); }
+    try { const result = await this.host.verify({ repoId, requestId: request.id, kind: 'commit', target: oid }); if (!this.current(request, epoch, repoId)) return; this.verification = result.status; this.renderMetadata(); await textDialog(m('signature.title'), m('signature.result', { status: m(`signature.${result.status}`), signer: result.signer || '—', key: result.key || '—', output: result.output })); }
     catch (error) { if (this.current(request, epoch, repoId)) this.callbacks.error(error); } finally { request.finish(); }
   }
   private canReview(): boolean {
@@ -288,13 +404,14 @@ export class DetailsPane {
   }
   private renderFileToolbar(): void {
     const settings = this.callbacks.context().settings;
-    const filter = el('input', 'file-filter'); filter.type = 'search'; filter.placeholder = 'Filter files'; filter.value = this.fileFilter; filter.setAttribute('aria-label', 'Filter changed files');
+    const filter = el('input', 'file-filter'); filter.type = 'search'; setAttribute(filter, 'placeholder', m('files.filter')); filter.value = this.fileFilter; setAttribute(filter, 'aria-label', m('files.filterLabel'));
     filter.addEventListener('input', () => { this.fileFilter = filter.value; this.fileList.scrollTop = 0; this.renderFiles(); this.callbacks.changed?.(); });
     filter.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); filter.value = ''; this.fileFilter = ''; this.fileList.scrollTop = 0; this.renderFiles(); this.fileList.focus(); } });
-    const toggle = button(settings.fileView === 'tree' ? 'Show file list' : 'Show file tree', () => this.callbacks.settings({ fileView: settings.fileView === 'tree' ? 'list' : 'tree' }), settings.fileView === 'tree' ? 'list' : 'tree', '', true);
+    const toggle = button(settings.fileView === 'tree' ? m('files.showList') : m('files.showTree'), () => this.callbacks.settings({ fileView: settings.fileView === 'tree' ? 'list' : 'tree' }), settings.fileView === 'tree' ? 'list' : 'tree', '', true);
     const reviewed = this.canReview() ? this.store.reviewed(this.reviewKey(), this.lastRepo) : new Set<string>();
-    const count = this.canReview() ? `${this.files.filter(file => reviewed.has(file.path)).length}/${this.files.length}` : `${this.files.length} changed files`;
+    const count = this.canReview() ? m('files.reviewCount', { reviewed: numberText(this.files.filter(file => reviewed.has(file.path)).length), count: numberText(this.files.length) }) : m('table.changedFiles', { count: numberText(this.files.length) });
     this.fileToolbar.replaceChildren(filter, toggle, el('span', 'muted review-count', count));
+    if (this.historyMode) this.fileToolbar.append(el('span', 'history-tree-hint muted', detailMessage('details.openHint')));
   }
   private nodeId(key: string): string { return `changed-file-${encodeURIComponent(key)}`; }
   private renderFiles(): void {
@@ -316,9 +433,13 @@ export class DetailsPane {
       if (!this.visibleNodes.some(node => node.key === this.activeNode)) this.activeNode = this.visibleNodes.find(node => node.file?.path === this.selectedFile)?.key ?? this.visibleNodes[0]?.key ?? '';
       this.virtualFiles = this.visibleNodes.length > VIRTUAL_FILES_THRESHOLD;
       this.fileRows = el('div', 'file-rows'); this.fileRows.setAttribute('role', 'presentation');
-      if (this.virtualFiles) { this.fileRows.style.position = 'relative'; this.fileRows.style.height = `${this.visibleNodes.length * FILE_ROW_HEIGHT}px`; this.fileRows.style.minWidth = '100%'; }
+      if (this.historyMode) {
+        const longest = this.visibleNodes.reduce((size, node) => Math.max(size, node.name.length + node.level * 2), 0);
+        this.fileRows.style.minWidth = `${Math.max(260, Math.min(32768, longest * Math.max(7, settings.fontSize * .58) + 140))}px`;
+      }
+      if (this.virtualFiles) { this.fileRows.style.position = 'relative'; this.fileRows.style.height = `${this.visibleNodes.length * FILE_ROW_HEIGHT}px`; if (!this.historyMode) this.fileRows.style.minWidth = '100%'; }
       this.renderedNodes.clear(); this.fileList.replaceChildren(this.fileRows);
-      if (!files.length) this.fileRows.append(empty(this.fileFilter ? 'No matching files' : this.selection?.kind === 'working' && this.callbacks.context().working === null ? 'Working tree status is not loaded yet' : 'No changed files'));
+      if (!files.length) this.fileRows.append(empty(this.fileFilter ? m('files.noMatches') : this.selection?.kind === 'working' && this.callbacks.context().working === null ? m('details.statusNotLoaded') : m('details.noChangedFiles')));
       this.renderFileWindow();
     } finally { span.end({ count: this.files.length, renderedCount: this.renderedNodes.size }); }
   }
@@ -327,12 +448,12 @@ export class DetailsPane {
     let row: HTMLElement;
     if (file) {
       row = el('div', 'file-row'); row.dataset.path = file.path;
-      row.title = `${file.oldPath && file.oldPath !== file.path ? `${file.oldPath} → ` : ''}${file.path}\n${file.additions ?? '?'} additions, ${file.deletions ?? '?'} deletions`;
+      setAttribute(row, 'title', m('files.stats', { path: `${file.oldPath && file.oldPath !== file.path ? `${file.oldPath} → ` : ''}${file.path}`, additions: file.additions === null ? '?' : numberText(file.additions), deletions: file.deletions === null ? '?' : numberText(file.deletions) }));
       row.append(badge(file.status, `file-status status-${file.status[0]}`), el('span', 'file-name', node.name), el('span', 'file-stats', file.additions !== null ? `+${file.additions}` : '', file.deletions !== null ? ` −${file.deletions}` : ''));
-      if (file.submodule) row.append(badge('submodule', '', `Commit changed: ${file.submodule.commitChanged}; modified: ${file.submodule.modified}; untracked: ${file.submodule.untracked}`));
-      if (this.canReview()) { const check = checkbox(`Mark ${file.path} reviewed`, false, checked => this.setReviewed(file.path, checked)); check.classList.add('review-check'); check.addEventListener('click', event => event.stopPropagation()); row.append(check); }
+      if (file.submodule) row.append(badge(m('files.submodule'), '', m('files.submoduleStatus', { commitChanged: m(file.submodule.commitChanged ? 'files.true' : 'files.false'), modified: m(file.submodule.modified ? 'files.true' : 'files.false'), untracked: m(file.submodule.untracked ? 'files.true' : 'files.false') })));
+      if (this.canReview()) { const check = checkbox(m('files.markPathReviewed', { path: file.path }), false, checked => this.setReviewed(file.path, checked)); check.classList.add('review-check'); check.addEventListener('click', event => event.stopPropagation()); row.append(check); }
       row.addEventListener('click', () => { this.activeNode = node.key; void this.selectFile(file.path); this.fileList.focus({ preventScroll: true }); });
-      row.addEventListener('dblclick', () => { void this.openWorkingFile(file); });
+      row.addEventListener('dblclick', () => { if (!this.historyMode) void this.openWorkingFile(file); });
       row.addEventListener('contextmenu', event => { event.preventDefault(); this.activeNode = node.key; this.renderActiveNode(); contextMenu(this.fileMenu(file), { x: event.clientX, y: event.clientY }, this.fileList); });
       row.setAttribute('role', tree ? 'treeitem' : 'option');
     } else {
@@ -340,7 +461,7 @@ export class DetailsPane {
       row.setAttribute('role', 'treeitem'); row.setAttribute('aria-expanded', String(node.expanded));
       row.addEventListener('click', () => { this.activeNode = node.key; this.toggleFolder(node.path); this.fileList.focus({ preventScroll: true }); });
     }
-    row.id = this.nodeId(node.key); row.style.setProperty('--file-depth', String(node.level));
+    row.id = this.nodeId(node.key); row.style.setProperty('--file-depth', String(node.level)); row.dataset.nodeKey = node.key;
     row.setAttribute('aria-posinset', String(node.position)); row.setAttribute('aria-setsize', String(node.siblings)); if (tree) row.setAttribute('aria-level', String(node.level + 1));
     if (this.virtualFiles) { row.style.position = 'absolute'; row.style.left = '0'; row.style.right = '0'; row.style.height = `${FILE_ROW_HEIGHT}px`; row.style.minHeight = `${FILE_ROW_HEIGHT}px`; row.style.boxSizing = 'border-box'; row.style.overflow = 'hidden'; }
     return row;
@@ -371,15 +492,21 @@ export class DetailsPane {
   private renderActiveNode(): void {
     for (const [key, row] of this.renderedNodes) row.classList.toggle('file-active', key === this.activeNode);
     const current = this.renderedNodes.get(this.activeNode);
+    for (const row of this.renderedNodes.values()) row.setAttribute('aria-current', String(row.dataset.path !== undefined && row.dataset.path === this.selectedFile));
     if (current) this.fileList.setAttribute('aria-activedescendant', current.id); else this.fileList.removeAttribute('aria-activedescendant');
   }
   private revealActiveNode(): void {
-    if (this.virtualFiles) {
+    if (this.virtualFiles || this.historyMode) {
       const index = this.visibleNodes.findIndex(node => node.key === this.activeNode); if (index < 0) return;
       const top = index * FILE_ROW_HEIGHT, height = this.fileList.clientHeight || FILE_ROW_HEIGHT * 12;
       if (top < this.fileList.scrollTop) this.fileList.scrollTop = top;
       else if (top + FILE_ROW_HEIGHT > this.fileList.scrollTop + height) this.fileList.scrollTop = top + FILE_ROW_HEIGHT - height;
       this.renderFileWindow();
+    } else if (this.historyMode) {
+      this.renderActiveNode(); const row = this.renderedNodes.get(this.activeNode); if (!row) return;
+      const bounds = row.getBoundingClientRect(), viewport = this.fileList.getBoundingClientRect();
+      if (bounds.top < viewport.top) this.fileList.scrollTop += bounds.top - viewport.top;
+      else if (bounds.bottom > viewport.bottom) this.fileList.scrollTop += bounds.bottom - viewport.bottom;
     } else { this.renderActiveNode(); this.renderedNodes.get(this.activeNode)?.scrollIntoView({ block: 'nearest' }); }
   }
   private toggleFolder(path: string, expanded?: boolean): void {
@@ -388,14 +515,14 @@ export class DetailsPane {
   private fileMenu(file: ChangedFile): MenuItem[] {
     const query = this.queryFor(file), reviewable = this.canReview(), reviewed = reviewable && this.store.reviewed(this.reviewKey(), this.lastRepo).has(file.path);
     const items: MenuItem[] = [
-      { label: 'View diff', icon: 'eye', action: () => { void this.selectFile(file.path); } },
-      { label: 'Open working file in editor', icon: 'editor', disabled: file.status.startsWith('D'), action: () => { void this.openWorkingFile(file); } },
-      { label: 'Open old revision in editor (read only)', icon: 'file', disabled: !query || file.status.startsWith('A') || file.status.startsWith('?'), action: () => { if (query) void this.external(() => this.host.openSnapshot(query, 'old')); } },
-      { label: 'Open new revision in editor (read only)', icon: 'file', disabled: !query || file.status.startsWith('D'), action: () => { if (query) void this.external(() => this.host.openSnapshot(query, 'new')); } },
-      { label: 'Open external diff', icon: 'external', disabled: !query, action: () => { if (query) void this.external(() => this.host.externalDiff(query)); } },
-      { label: 'Copy path', icon: 'copy', action: () => this.callbacks.copy(file.path) },
+      { label: m('files.viewDiff'), icon: 'eye', action: () => { void this.selectFile(file.path); } },
+      { label: m('files.openWorking'), icon: 'editor', disabled: file.status.startsWith('D'), action: () => { void this.openWorkingFile(file); } },
+      { label: m('files.openOld'), icon: 'file', disabled: !query || file.status.startsWith('A') || file.status.startsWith('?'), action: () => { if (query) void this.external(() => this.host.openSnapshot(query, 'old')); } },
+      { label: m('files.openNew'), icon: 'file', disabled: !query || file.status.startsWith('D'), action: () => { if (query) void this.external(() => this.host.openSnapshot(query, 'new')); } },
+      { label: m('files.externalDiff'), icon: 'external', disabled: !query, action: () => { if (query) void this.external(() => this.host.externalDiff(query)); } },
+      { label: m('files.copyPath'), icon: 'copy', action: () => this.callbacks.copy(file.path) },
     ];
-    if (reviewable) items.push({ label: reviewed ? 'Mark as not reviewed' : 'Mark reviewed', icon: 'check', action: () => this.setReviewed(file.path, !reviewed) }); return items;
+    if (reviewable) items.push({ label: reviewed ? m('files.markNotReviewed') : m('files.markReviewed'), icon: 'check', action: () => this.setReviewed(file.path, !reviewed) }); return items;
   }
   private queryFor(file: ChangedFile): DiffQuery | null {
     const context = this.callbacks.context(), repo = context.repo, selection = this.selection; if (!repo || !selection) return null;
@@ -409,11 +536,16 @@ export class DetailsPane {
   private renderDiffHeader(): void {
     const file = this.fileAt(this.selectedFile); this.diffHeader.replaceChildren(); if (!file) return;
     const reviewed = this.canReview() && this.store.reviewed(this.reviewKey(), this.lastRepo).has(file.path);
-    const more = button('File actions', () => menuAtButton(more, this.fileMenu(file)), 'more', '', true);
-    this.diffHeader.append(el('span', 'file-path mono', file.oldPath && file.oldPath !== file.path ? `${file.oldPath} → ${file.path}` : file.path), ...(this.canReview() ? [checkbox('Reviewed', reviewed, checked => this.setReviewed(file.path, checked))] : []), el('span', 'spacer'), button('Open working file in editor', () => { void this.openWorkingFile(file); }, 'editor', '', true), more);
+    const more = button(m('files.actions'), () => menuAtButton(more, this.fileMenu(file)), 'more', '', true);
+    this.diffHeader.append(el('span', 'file-path mono', file.oldPath && file.oldPath !== file.path ? `${file.oldPath} → ${file.path}` : file.path), ...(this.canReview() ? [checkbox(m('files.reviewed'), reviewed, checked => this.setReviewed(file.path, checked))] : []), el('span', 'spacer'), button(m('files.openWorking'), () => { void this.openWorkingFile(file); }, 'editor', '', true), more);
   }
   private selectFile(path: string, restore?: DiffViewState, performanceContext?: PerformanceContext): Promise<void> {
     const repo = this.callbacks.context().repo, file = this.fileAt(path); if (!repo || !this.selection || !file) return Promise.resolve();
+    if (this.historyMode && this.selection.kind !== 'working') {
+      this.selectedFile = path; this.activeNode = `file:${path}`; this.updateFileRows(); this.callbacks.changed?.();
+      const selection = this.selection.kind === 'commit' ? { ...this.selection, parent: this.detail?.base ?? undefined } : { ...this.selection };
+      return Promise.resolve(this.callbacks.openHistoryFile?.({ repo, selection, files: this.files, path, subject: this.detail?.commit.subject })).catch(error => this.callbacks.error(error));
+    }
     const query = this.queryFor(file); if (!query) return Promise.resolve();
     const key = diffCacheKey(query), same = this.selectedFile === path && this.activeDiffKey === key;
     this.selectedFile = path; this.activeNode = `file:${path}`; this.updateFileRows(); this.renderDiffHeader();
@@ -433,9 +565,9 @@ export class DetailsPane {
     const request = this.requests.begin('diff'), epoch = this.epoch, repoId = query.repoId; query.requestId = request.id; operation.request(request.id);
     const cacheable = cacheableDiff(query), cached = cacheable ? this.diffCache.get(key) : undefined, cacheHit = Boolean(cached);
     const diffSpan = operation.span('diff-ready', { requestId: request.id, cacheHit });
-    if (!cached) this.diffContainer.replaceChildren(loading('Loading diff…', () => {
+    if (!cached) this.diffContainer.replaceChildren(loading(m('diff.loading'), () => {
       if (this.activeDiffKey !== key || this.epoch !== epoch) return;
-      this.requests.cancel('diff'); this.diffStatus = 'cancelled'; this.diffContainer.replaceChildren(empty('Diff loading cancelled'), button('Retry', () => { void this.selectFile(path); }));
+      this.requests.cancel('diff'); this.diffStatus = 'cancelled'; this.diffContainer.replaceChildren(empty(m('diff.cancelled')), button(m('details.retry'), () => { void this.selectFile(path); }));
     }));
     try {
       const result = cached ?? await operation.run(() => this.host.diffPatch ? this.host.diffPatch(query) : this.host.diff(query));
@@ -454,12 +586,12 @@ export class DetailsPane {
       if (cacheable) operation.run(() => this.setReviewed(path, true, true)); this.callbacks.changed?.();
     } catch (error) {
       outcome = this.current(request, epoch, repoId) ? 'error' : 'cancelled';
-      if (this.current(request, epoch, repoId) && this.selectedFile === path && this.activeDiffKey === key) { this.diffStatus = 'error'; this.diffContainer.replaceChildren(el('div', 'inline-error', errorMessage(error), button('Retry diff', () => { void this.selectFile(path); }, 'refresh'))); }
+      if (this.current(request, epoch, repoId) && this.selectedFile === path && this.activeDiffKey === key) { this.diffStatus = 'error'; this.diffContainer.replaceChildren(el('div', 'inline-error', errorText(error), button(m('diff.retry'), () => { void this.selectFile(path); }, 'refresh'))); }
     } finally { request.finish(); diffSpan.end({ outcome, cacheHit }); operation.end({ outcome, cacheHit }); }
   }
   private cancelContent(): void { this.contentGeneration++; this.requests.cancel('content'); this.contentPending = null; }
   private ensureContent(side: ContentSide, query: DiffQuery, key: string, result: DiffResult, epoch: number): Promise<SideContent> {
-    if (this.epoch !== epoch || this.activeDiffKey !== key || this.displayedResult !== result || this.callbacks.context().repo?.id !== query.repoId) return Promise.reject(new Error('Content loading cancelled.'));
+    if (this.epoch !== epoch || this.activeDiffKey !== key || this.displayedResult !== result || this.callbacks.context().repo?.id !== query.repoId) return Promise.reject(Object.assign(new Error(), { code: 'CANCELLED' }));
     if (this.loadedSides.has(side)) return Promise.resolve(this.sideContents[side]!);
     if (this.contentPending?.side === side) return this.contentPending.promise;
     const cached = cacheableDiff(query) ? this.contentCache.get(`${key}:${side}`) : undefined;
@@ -474,7 +606,7 @@ export class DetailsPane {
     try {
       const contentQuery = { ...query, requestId: request.id };
       const result = await operation.run(() => this.host.fileContent ? this.host.fileContent(contentQuery, side) : this.host.diff(contentQuery));
-      if (!this.current(request, epoch, query.repoId) || this.contentGeneration !== generation || this.activeDiffKey !== key || this.displayedResult !== patch) { outcome = 'stale'; throw new Error('Content loading cancelled.'); }
+      if (!this.current(request, epoch, query.repoId) || this.contentGeneration !== generation || this.activeDiffKey !== key || this.displayedResult !== patch) { outcome = 'stale'; throw Object.assign(new Error(), { code: 'CANCELLED' }); }
       const data = { content: side === 'old' ? result.oldContent : result.newContent, binary: result.binary, truncated: result.truncated };
       this.loadedSides.add(side); this.sideContents[side] = data;
       if (cacheableDiff(query)) this.contentCache.set(`${key}:${side}`, data);
@@ -483,7 +615,8 @@ export class DetailsPane {
     finally { request.finish(); span.end({ outcome }); operation.end({ outcome }); }
   }
   private fileKeydown(event: KeyboardEvent): void {
-    if ((event.target as HTMLElement).closest('input,button')) return;
+    if ((event.target as HTMLElement).closest('input,button,select,textarea,[contenteditable="true"],[role="separator"]')) return;
+    if (['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End', ' ', 'Enter'].includes(event.key)) event.stopPropagation();
     let index = Math.max(0, this.visibleNodes.findIndex(node => node.key === this.activeNode)); const current = this.visibleNodes[index]; if (!current) return;
     if (event.key === 'ArrowDown') index = Math.min(this.visibleNodes.length - 1, index + 1);
     else if (event.key === 'ArrowUp') index = Math.max(0, index - 1);
@@ -496,7 +629,7 @@ export class DetailsPane {
     else if (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') { event.preventDefault(); if (!current.file) return; const rect = document.getElementById(this.nodeId(current.key))?.getBoundingClientRect() ?? this.fileList.getBoundingClientRect(); contextMenu(this.fileMenu(current.file), { x: rect.left + 20, y: rect.bottom }, this.fileList); return; }
     else return;
     event.preventDefault(); const next = this.visibleNodes[index]; this.activeNode = next.key;
-    if (next.file) void this.selectFile(next.path); this.revealActiveNode();
+    if (next.file && !this.historyMode) void this.selectFile(next.path); this.revealActiveNode(); this.callbacks.changed?.();
   }
   private async openWorkingFile(file: ChangedFile): Promise<void> {
     const epoch = this.epoch, key = this.reviewKey(), repoId = this.lastRepo;
@@ -507,5 +640,5 @@ export class DetailsPane {
     const repoId = this.lastRepo; if (!await this.callbacks.ensureTrust() || this.callbacks.context().repo?.id !== repoId) return false;
     try { await action(); return true; } catch (error) { this.callbacks.error(error); return false; }
   }
-  destroy(): void { this.requests.cancelAll(); this.contentGeneration++; this.epoch++; this.filesObserver.disconnect(); cancelAnimationFrame(this.fileFrame); this.diffView.destroy(); }
+  destroy(): void { this.destroyed = true; this.requests.cancelAll(); this.contentGeneration++; this.epoch++; this.filesObserver.disconnect(); this.measureObserver.disconnect(); cancelAnimationFrame(this.fileFrame); cancelAnimationFrame(this.measureFrame); this.snapshots.clear(); this.diffView.destroy(); disposeBindings(this.element); }
 }

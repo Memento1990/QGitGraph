@@ -15,6 +15,30 @@ describe('v2 preference migration and schema', () => {
     expect(state.repoSettings.repo).not.toHaveProperty('gitPath');
     expect(state.settings.dialogDefaults).toEqual(DEFAULT_SETTINGS.dialogDefaults);
   });
+  it('keeps local-changes position shareable and independently overrideable by repository', async () => {
+    expect(DEFAULT_SETTINGS.localChangesPosition).toBe('middle');
+    for (const localChangesPosition of ['middle', 'inline'] as const) {
+      expect(validateSettingsPatch({ localChangesPosition })).toEqual([]);
+      expect(validateSettingsPatch({ localChangesPosition }, 'repository')).toEqual([]);
+      expect(prepareConfigImport({ version: 2, settings: { localChangesPosition } }).settings).toEqual({ localChangesPosition });
+    }
+    const store = new StateStore(async () => undefined, () => undefined);
+    store.updateSettings({ localChangesPosition: 'inline' }, 'repo');
+    expect(store.state.repoSettings.repo).toEqual({ localChangesPosition: 'inline' });
+    expect(effectiveSettings(store.state, 'repo').localChangesPosition).toBe('inline');
+    expect(effectiveSettings(store.state, 'other').localChangesPosition).toBe('middle');
+    for (const invalid of ['bottom', 'right', '', true, null, 1]) {
+      expect(validateSettingsPatch({ localChangesPosition: invalid }).map(issue => issue.path)).toEqual(['localChangesPosition']);
+      expect(normalizeSettings({ localChangesPosition: invalid }).localChangesPosition).toBe('middle');
+    }
+    await store.flush();
+  });
+  it('never imports device-local layout, views or transient commit drafts', () => {
+    const preview = prepareConfigImport({ version: 2, layout: { localWidth: 999 }, views: { repo: {} }, draft: 'private',
+      settings: { localChangesPosition: 'inline', localWidth: 999, detailRatio: 0.3, fullMessage: true, draft: 'private' } });
+    expect(preview.settings).toEqual({ localChangesPosition: 'inline' });
+    for (const key of ['layout', 'views', 'draft', 'localWidth', 'detailRatio', 'fullMessage']) expect(preview.warnings.some(warning => warning.includes(key))).toBe(true);
+  });
   it('does not turn a v2 legacy pageSize into new initial/load-more values', () => {
     const state = normalizeState({ version: 2, settings: { pageSize: 180, initialLoad: 320, loadMore: 80, detailPosition: 'inline', discoveryDepth: 0 } });
     expect(state.settings).toMatchObject({ pageSize: 180, initialLoad: 320, loadMore: 80, detailPosition: 'inline', discoveryDepth: 0 });
@@ -75,6 +99,30 @@ describe('v2 preference migration and schema', () => {
     expect(state.views.repo.detail?.selection).toEqual({ kind: 'commit', oid, parent }); expect(state.views.repo.search).toBe('needle');
     expect(state.views.bad.detail).toBeUndefined();
   });
+  it('roundtrips bounded detail view fields without exporting transient UI objects', () => {
+    const view = { scope: { kind: 'head' }, search: 'literal message', searchMode: 'message', queryMode: 'filter', order: 'date', scrollTop: 54.5, scrollLeft: 23.25, selected: oid,
+      detail: { selection: { kind: 'commit', oid, parent }, path: 'src/a.ts', scrollTop: 12.5, filesScrollTop: 120.5, filesScrollLeft: 9.5, fullMessage: true, inlineSide: 'above' },
+      filter: { fileFilter: 'src' }, collapsed: ['src'] };
+    const state = normalizeState({ version: 2, views: { repo: { ...view, draft: 'private', detail: { ...view.detail, draft: 'private', files: [{ path: 'not a cache' }] } } } });
+    expect(state.views.repo).toEqual(view); expect(normalizeState(state).views.repo).toEqual(view);
+    expect(JSON.stringify(state)).not.toContain('private'); expect(JSON.stringify(state)).not.toContain('not a cache');
+  });
+  it('cleans malformed detail enums, booleans, scrolls and text with the existing view budgets', () => {
+    const state = normalizeState({ views: {
+      repo: { scrollTop: NaN, scrollLeft: Infinity, search: 'x'.repeat(40000), detail: { selection: { kind: 'working', draft: 'private' },
+        scrollTop: -1, filesScrollTop: 1e15, filesScrollLeft: '40', fullMessage: 'yes', inlineSide: 'left', path: 'x'.repeat(4097) },
+        filter: Object.fromEntries(Array.from({ length: 100 }, (_, index) => [`key${index}`, 'value'])), collapsed: Array.from({ length: 10001 }, (_, index) => `path${index}`) },
+      invalidSelection: { detail: { selection: { kind: 'compare', base: 'HEAD', target: oid }, fullMessage: true, inlineSide: 'below' } },
+    } });
+    expect(state.views.repo.scrollTop).toBe(0); expect(state.views.repo.scrollLeft).toBe(0); expect(state.views.repo.search).toHaveLength(32768);
+    expect(state.views.repo.detail).toEqual({ selection: { kind: 'working' }, scrollTop: 0, filesScrollTop: 1_000_000_000 });
+    expect(Object.keys(state.views.repo.filter!)).toHaveLength(64); expect(state.views.repo.collapsed).toHaveLength(10000);
+    expect(state.views.invalidSelection.detail).toBeUndefined();
+    expect(normalizeState({ views: { repo: { search: '文'.repeat(32768), detail: { selection: { kind: 'working' }, path: '文'.repeat(4096) } } } }).views.repo)
+      .toMatchObject({ search: '文'.repeat(32768), detail: { path: '文'.repeat(4096) } });
+    expect(normalizeState({ views: { repo: { detail: { selection: { kind: 'working' }, fullMessage: false, inlineSide: 'below' } } } }).views.repo.detail)
+      .toEqual({ selection: { kind: 'working' }, fullMessage: false, inlineSide: 'below' });
+  });
 });
 
 describe('explicit and resumable immutable review sessions', () => {
@@ -112,6 +160,18 @@ describe('explicit and resumable immutable review sessions', () => {
 });
 
 describe('state persistence failures and serialized snapshots', () => {
+  it('projects save snapshots through the schema and never persists local working drafts', async () => {
+    const save = vi.fn(async (_state: unknown) => undefined); const store = new StateStore(save, () => undefined);
+    const raw = store.state as unknown as Record<string, unknown>; raw.localDrafts = { repo: 'private message' };
+    store.state.views.repo = { scope: { kind: 'all' }, search: '', searchMode: 'all', queryMode: 'filter', order: 'date', scrollTop: 0, selected: null,
+      detail: { selection: { kind: 'working' }, fullMessage: true } };
+    (store.state.views.repo as unknown as Record<string, unknown>).draft = 'private message';
+    (store.state.views.repo.detail as unknown as Record<string, unknown>).draft = 'private message';
+    store.queue(); await store.flush();
+    expect(JSON.stringify(save.mock.calls[0][0])).not.toContain('private message');
+    expect(save.mock.calls[0][0]).toMatchObject({ version: 2, views: { repo: { detail: { selection: { kind: 'working' }, fullMessage: true } } } });
+    expect(raw.localDrafts).toEqual({ repo: 'private message' });
+  });
   it('rejects explicit flush, keeps dirty state, and retries after a failure', async () => {
     const failure = new Error('disk full'); const onError = vi.fn();
     const save = vi.fn().mockRejectedValueOnce(failure).mockResolvedValue(undefined); const store = new StateStore(save, onError);

@@ -4,7 +4,7 @@
 
 - Declared license expression (not a license grant by this app): Apache-2.0 OR MIT
 - Collection status: FILES_COLLECTED_NOT_LEGALLY_VERIFIED
-- Dependency relationship: production dependency graph (dependencies/optionalDependencies and installed peers); npm devDependencies excluded
+- Dependency relationship: production dependency graph (dependencies/optionalDependencies and installed peers); conservative closure, NOT proof of shipped runtime code; dev-only roots excluded
 - Locked source: https://registry.npmmirror.com/@tauri-apps/api/-/api-2.12.5.tgz
 - Repository declared by package: git+https://github.com/tauri-apps/tauri.git
 - Declared authors/contributors (NOT inferred copyright holders): Tauri Programme within The Commons Conservancy
@@ -20,10 +20,10 @@ Copyright holders and permission/warranty terms are retained in the original fil
 
 [SOURCE_HEADERS.txt](SOURCE_HEADERS.txt) (comment excerpts, not implementation code).
 
-## Bundled third-party helper
+## Embedded third-party portions and helpers
 
-- tslib (vendored helper); version UNKNOWN/not separately declared. [Original permission comment](embedded/tslib-1-permission.txt) from external/tslib/tslib.es6.cjs. Original Microsoft permission/warranty text retained; no standalone version or SPDX identifier inferred.
-- tslib (vendored helper); version UNKNOWN/not separately declared. [Original permission comment](embedded/tslib-2-permission.txt) from external/tslib/tslib.es6.js. Original Microsoft permission/warranty text retained; no standalone version or SPDX identifier inferred.
+- tslib (vendored helper); version UNKNOWN/not separately declared. [Original retained permission text](embedded/tslib-1-permission.txt) from external/tslib/tslib.es6.cjs. Original Microsoft permission/warranty text retained; no standalone version or SPDX identifier inferred.
+- tslib (vendored helper); version UNKNOWN/not separately declared. [Original retained permission text](embedded/tslib-2-permission.txt) from external/tslib/tslib.es6.js. Original Microsoft permission/warranty text retained; no standalone version or SPDX identifier inferred.
 
 ## Review findings
 

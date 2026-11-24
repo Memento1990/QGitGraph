@@ -39,6 +39,20 @@ describe('inline virtual list geometry', () => {
     expect(layout.totalHeight).toBe(920); expect(layout.indexAt(139)).toBe(4); expect(layout.indexAt(300)).toBe(4); expect(layout.indexAt(500)).toBe(5);
     for (let index = 0; index < 20; index++) expect(layout.indexAt(layout.top(index) + 1)).toBe(index);
   });
+  it('inserts before the first row at boundary zero and shares round-trip row positions', () => {
+    const layout = new RowLayout(8, 28, 0, 320, 'before');
+    expect(layout.slotBoundary).toBe(0); expect(layout.slotTop).toBe(0); expect(layout.totalHeight).toBe(544);
+    expect(layout.top(0)).toBe(320); expect(layout.top(1)).toBe(348); expect(layout.indexAt(150)).toBe(0); expect(layout.indexAt(320)).toBe(0);
+    for (let index = 0; index < 8; index++) expect(layout.indexAt(layout.top(index) + 14)).toBe(index);
+  });
+  it('places before/after at the same insertion boundary and removes the slot from pure-list coordinates', () => {
+    const after = new RowLayout(100, 28, 19, 600, 'after'), before = new RowLayout(100, 28, 20, 600, 'before');
+    expect(after.slotBoundary).toBe(before.slotBoundary); expect(after.slotTop).toBe(560);
+    for (let index = 0; index < 100; index++) expect(after.top(index)).toBe(before.top(index));
+    expect(after.plainScrollTop(100, 400)).toBe(100); expect(after.plainScrollTop(800, 400)).toBe(560); expect(after.plainScrollTop(1400, 400)).toBe(800);
+    expect(after.visibleRange(1200, 400)).toEqual(before.visibleRange(1200, 400));
+    expect(new RowLayout(0, 28).visibleRange(0, 400)).toEqual({ first: 0, last: 0 });
+  });
   it('handles absent / filtered selections, empty lists and trailing slots', () => {
     expect(new RowLayout(0, 28, 0, 300).indexAt(0)).toBe(-1);
     const regular = new RowLayout(10, 28, -1, 300); expect(regular.totalHeight).toBe(280); expect(regular.top(5)).toBe(140);

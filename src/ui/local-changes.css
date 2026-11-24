@@ -1,0 +1,102 @@
+/* Prototype-v3 local surfaces, using only the application's shared theme tokens. */
+.local-changes-pane {
+  --local-list-size: 225px;
+  display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0;
+  overflow: hidden; background: var(--surface-sunken); color: var(--text);
+}
+.local-changes-heading {
+  display: flex; align-items: center; gap: 6px; height: 33px; flex: 0 0 33px;
+  padding: 3px 8px 3px 12px; border-bottom: 1px solid var(--border-subtle);
+}
+.local-changes-heading > .icon { width: 14px; color: var(--text-muted); }
+.local-changes-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.local-changes-heading .icon-button { width: 26px; height: 26px; }
+.local-changes-count {
+  display: inline-flex; align-items: center; justify-content: center; height: 17px; min-width: 17px;
+  padding: 0 4px; border: 1px solid var(--border); border-radius: 3px;
+  color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums;
+}
+.local-changes-list-surface { display: flex; flex-direction: column; flex: 0 1 auto; min-width: 0; min-height: 90px; max-height: 68%; background: var(--surface-sunken); overflow: hidden; }
+.local-changes-composer { flex: 0 0 auto; min-width: 0; padding: 9px 10px 8px; border-bottom: 1px solid var(--border); }
+.local-changes-message-label { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.local-changes-composer textarea {
+  /* This is one movable editor: placement must not change its line box or resize constraints. */
+  display: block; box-sizing: border-box; width: 100%; height: 52px; min-height: 48px; max-height: 130px; resize: vertical;
+  padding: 7px 9px; font-size: 12px; line-height: 1.5; background: var(--surface); overflow-anchor: none;
+}
+.local-changes-composer-bottom { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding-top: 6px; }
+.local-changes-commit.button { min-height: 26px; padding: 3px 9px; font-size: 11px; }
+.local-changes-composer-tip { color: var(--text-muted); font-size: 10px; }
+.local-changes-composer-error { margin: 5px 0 0; color: var(--warning); font-size: 11px; overflow-wrap: anywhere; }
+.local-changes-notice { flex: 0 0 auto; padding: 5px 10px; border-bottom: 1px solid var(--border-subtle); color: var(--warning); font-size: 11px; }
+.local-changes-files {
+  position: relative; flex: 0 1 var(--local-list-size); height: var(--local-list-size); min-height: 70px;
+  overflow: auto; overscroll-behavior: contain; overflow-anchor: none;
+}
+.local-changes-rows { position: relative; min-width: 0; width: 100%; }
+.local-changes-group, .local-changes-file { position: absolute; inset-inline: 0; min-width: 0; }
+.local-changes-group {
+  display: flex; align-items: center; gap: 5px; height: 28px; padding: 2px 7px 2px 9px;
+  color: var(--text-muted); font-size: 11px; background: var(--surface-sunken); z-index: 1;
+}
+.local-changes-group strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 600; }
+.local-changes-group .icon-button { width: 22px; height: 22px; padding: 3px; }
+.local-changes-group .icon { width: 12px; height: 12px; }
+.local-changes-group-toggle { flex: 0 0 17px; }
+.local-changes-group.is-collapsed .local-changes-group-toggle .icon { transform: rotate(-90deg); }
+.local-changes-file {
+  display: flex; align-items: center; gap: 5px; height: 27px; padding: 1px 7px 1px 16px;
+  border-left: 2px solid transparent; cursor: default; user-select: none;
+}
+.local-changes-file:hover { background: var(--surface-hover); }
+.local-changes-file.selected { background: var(--selected); border-left-color: var(--selected-border); }
+.local-changes-file-state { flex: 0 0 13px; width: 13px; color: var(--warning); text-align: center; font: 11px Consolas, 'Cascadia Mono', monospace; }
+.local-changes-file-state.added { color: var(--add-text); }
+.local-changes-file-state.deleted { color: var(--danger); }
+.local-changes-file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.local-changes-file-directory { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 10px; }
+.local-changes-file-actions { display: flex; align-items: center; flex: 0 0 auto; gap: 0; margin-left: auto; opacity: 0; }
+.local-changes-file-actions .icon-button { width: 21px; height: 22px; padding: 3px; }
+.local-changes-file-actions .icon { width: 13px; height: 13px; }
+.local-changes-file:hover .local-changes-file-actions,
+.local-changes-file:focus-within .local-changes-file-actions,
+.local-changes-file.selected .local-changes-file-actions { opacity: 1; }
+.local-changes-files:focus-visible .local-changes-file.selected { outline: 1px solid var(--focus); outline-offset: -2px; }
+.local-changes-file .button:focus-visible, .local-changes-group .button:focus-visible { outline-offset: -2px; }
+.local-changes-empty { padding: 12px 7px; }
+.local-changes-empty .empty-state { padding: 10px; font-size: 11px; }
+.local-changes-raw-error { max-height: 110px; margin: 7px; color: var(--danger); white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; font-size: 11px; }
+.local-changes-list-resizer.resize-handle { flex: 0 0 4px; height: 4px; border-top: 1px solid var(--border-subtle); }
+.local-changes-preview { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: var(--surface); }
+.local-changes-diff-heading {
+  display: flex; align-items: center; gap: 6px; flex: 0 0 30px; height: 30px; min-width: 0;
+  padding: 4px 9px; border-bottom: 1px solid var(--border-subtle); background: var(--surface-raised); font-size: 11px;
+}
+.local-changes-preview-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.local-changes-preview-scope { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 10px; }
+.local-changes-diff-heading .icon-button { width: 22px; height: 22px; padding: 3px; }
+.local-changes-diff-container { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.local-changes-diff-container > .empty-state { margin: auto; padding: 22px 14px; font-size: 11px; }
+.local-changes-diff-container > .inline-error { padding: 12px; overflow-wrap: anywhere; }
+.local-changes-preview .diff-toolbar { flex: 0 0 28px; min-height: 28px; gap: 3px; padding: 2px 8px; font-size: 10px; }
+.local-changes-preview .diff-toolbar .button { min-height: 22px; height: 22px; padding: 2px 4px; }
+.local-changes-preview .diff-toolbar select { height: 23px; max-width: 130px; font-size: 10px; }
+.local-changes-preview .diff-toolbar .muted { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.local-changes-preview .diff-scroll { overscroll-behavior: contain; }
+.local-changes-list-surface[data-placement='sidebar'] { flex: 0 0 auto; max-height: none; min-height: 0; border-left: 1px solid var(--border); }
+.local-changes-list-surface[data-placement='sidebar'] .local-changes-composer { padding: 7px 7px 8px 10px; }
+.local-changes-list-surface[data-placement='sidebar'] .local-changes-composer-tip,
+.local-changes-list-surface[data-placement='sidebar'] .local-changes-file-directory { display: none; }
+.local-changes-list-surface[data-placement='sidebar'] .local-changes-files { flex: 0 0 var(--local-list-size); max-height: 360px; }
+.local-changes-list-surface[data-placement='sidebar'] .local-changes-file { padding-left: 13px; }
+.local-changes-list-surface[data-placement='sidebar'] .local-changes-group { padding-left: 8px; }
+.local-changes-confirm-paths { max-height: 240px; padding: 9px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-sunken); border: 1px solid var(--border-subtle); font-size: 11px; }
+@media (pointer: coarse) {
+  .local-changes-file-actions { opacity: 1; }
+  .local-changes-file-actions .icon-button, .local-changes-group .icon-button { min-width: 24px; min-height: 24px; }
+}
+@media (forced-colors: active) {
+  .local-changes-file.selected { outline: 1px solid Highlight; }
+  .local-changes-file-actions { opacity: 1; }
+  .local-changes-list-resizer { border-color: ButtonText; }
+}

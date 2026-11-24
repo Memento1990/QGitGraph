@@ -308,6 +308,8 @@ pub(crate) fn working_state(bytes: &[u8]) -> Result<WorkingState> {
     let mut state = WorkingState {
         files: Vec::new(),
         branch: None,
+        upstream: None,
+        tracking_known: false,
         ahead: 0,
         behind: 0,
         operation: None,
@@ -328,6 +330,13 @@ pub(crate) fn working_state(bytes: &[u8]) -> Result<WorkingState> {
             }
             continue;
         }
+        if let Some(value) = record.strip_prefix(b"# branch.upstream ") {
+            if value.is_empty() {
+                return Err(invalid("Empty branch upstream in Git output"));
+            }
+            state.upstream = Some(text(value));
+            continue;
+        }
         if let Some(value) = record.strip_prefix(b"# branch.ab ") {
             let mut parts = value.split(|b| *b == b' ');
             let ahead = parts
@@ -343,10 +352,11 @@ pub(crate) fn working_state(bytes: &[u8]) -> Result<WorkingState> {
             }
             state.ahead = count(ahead)?;
             state.behind = count(behind)?;
+            state.tracking_known = true;
             continue;
         }
         if record.starts_with(b"# ") {
-            continue; // branch.oid, branch.upstream and future documented headers.
+            continue; // Unknown future documented headers.
         }
         let tag = *record
             .first()
@@ -916,6 +926,63 @@ mod tests {
         assert!(!value.files[3].staged && value.files[3].unstaged);
         assert!(working_state(b"2 R. N... truncated\0").is_err());
         assert!(working_state(b"? \xff\0").is_err());
+    }
+
+    #[test]
+    fn status_tracking_is_known_only_from_returned_ahead_behind_header() {
+        let a = hash('a');
+        let tracked = format!("# branch.oid {a}\0# branch.head main\0# branch.upstream origin/main\0# branch.ab +0 -0\0");
+        let value = working_state(tracked.as_bytes()).unwrap();
+        assert_eq!(value.upstream.as_deref(), Some("origin/main"));
+        assert!(value.tracking_known);
+        assert_eq!((value.ahead, value.behind), (0, 0));
+
+        let missing_counts =
+            working_state(b"# branch.head main\0# branch.upstream origin/missing\0").unwrap();
+        assert_eq!(missing_counts.upstream.as_deref(), Some("origin/missing"));
+        assert!(!missing_counts.tracking_known);
+        let no_upstream = working_state(b"# branch.head main\0").unwrap();
+        assert_eq!(no_upstream.upstream, None);
+        assert!(!no_upstream.tracking_known);
+        let default = working_state(b"").unwrap();
+        assert_eq!(default.upstream, None);
+        assert!(!default.tracking_known);
+
+        let unicode = working_state(
+            b"# branch.upstream origin/\xe5\x8a\x9f\xe8\x83\xbd\0# branch.ab +12 -3\0",
+        )
+        .unwrap();
+        assert_eq!(unicode.upstream.as_deref(), Some("origin/功能"));
+        assert!(unicode.tracking_known);
+        assert_eq!((unicode.ahead, unicode.behind), (12, 3));
+        for bytes in [
+            &b"# branch.upstream \0"[..],
+            &b"# branch.ab +? -?\0"[..],
+            &b"# branch.ab +1 -2 extra\0"[..],
+            &b"# branch.ab +1 -\0"[..],
+            &b"# branch.ab +1 -2"[..],
+        ] {
+            assert!(working_state(bytes).is_err(), "{bytes:?}");
+        }
+    }
+
+    #[test]
+    fn status_tracking_does_not_conflate_detached_or_unborn_with_sync() {
+        let detached = working_state(
+            format!("# branch.oid {}\0# branch.head (detached)\0", hash('a')).as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(detached.branch, None);
+        assert_eq!(detached.upstream, None);
+        assert!(!detached.tracking_known);
+        let unborn = working_state(
+            b"# branch.oid (initial)\0# branch.head new\0# branch.upstream origin/new\0",
+        )
+        .unwrap();
+        assert_eq!(unborn.branch.as_deref(), Some("new"));
+        assert_eq!(unborn.head, None);
+        assert_eq!(unborn.upstream.as_deref(), Some("origin/new"));
+        assert!(!unborn.tracking_known);
     }
 
     #[test]

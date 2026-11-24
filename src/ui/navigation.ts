@@ -28,22 +28,36 @@ export function branchNeighbours(commits: readonly Commit[], oid: string, direct
   return commits.filter(item => alternate ? item.parents.slice(1).includes(oid) : item.parents[0] === oid).map(item => item.oid);
 }
 
-/** Variable-height virtual list with one actual inline details slot after a commit row. */
+export type InlineSide = 'before' | 'after';
+/** Variable-height history geometry. The insertion boundary may be zero (before the first row). */
 export class RowLayout {
   readonly slotIndex: number;
-  constructor(readonly count: number, readonly rowHeight: number, slotIndex = -1, readonly slotHeight = 0) {
-    this.slotIndex = slotIndex >= 0 && slotIndex < count && slotHeight > 0 ? slotIndex : -1;
+  readonly slotBoundary: number;
+  readonly slotHeight: number;
+  constructor(readonly count: number, readonly rowHeight: number, slotIndex = -1, slotHeight = 0, readonly side: InlineSide = 'after') {
+    this.slotIndex = slotIndex >= 0 && slotIndex < count && Number.isFinite(slotHeight) && slotHeight > 0 ? slotIndex : -1;
+    this.slotBoundary = this.slotIndex < 0 ? -1 : this.slotIndex + Number(side === 'after');
+    this.slotHeight = this.slotIndex < 0 ? 0 : slotHeight;
   }
-  get totalHeight(): number { return this.count * this.rowHeight + (this.slotIndex >= 0 ? this.slotHeight : 0); }
-  get slotTop(): number { return this.slotIndex >= 0 ? (this.slotIndex + 1) * this.rowHeight : -1; }
-  top(index: number): number { return index * this.rowHeight + (this.slotIndex >= 0 && index > this.slotIndex ? this.slotHeight : 0); }
+  get totalHeight(): number { return this.count * this.rowHeight + this.slotHeight; }
+  get slotTop(): number { return this.slotBoundary >= 0 ? this.slotBoundary * this.rowHeight : -1; }
+  top(index: number): number { return index * this.rowHeight + (this.slotBoundary >= 0 && index >= this.slotBoundary ? this.slotHeight : 0); }
   indexAt(y: number): number {
     if (!this.count) return -1;
     const position = Math.max(0, y);
-    if (this.slotIndex >= 0 && position >= this.slotTop) {
+    if (this.slotBoundary >= 0 && position >= this.slotTop) {
       if (position < this.slotTop + this.slotHeight) return this.slotIndex;
       return Math.min(this.count - 1, Math.floor((position - this.slotHeight) / this.rowHeight));
     }
     return Math.min(this.count - 1, Math.floor(position / this.rowHeight));
+  }
+  /** Remove only the portion of the insertion preceding the viewport; independent of selected row. */
+  plainScrollTop(scrollTop: number, viewportHeight = 0): number {
+    const inserted = this.slotBoundary < 0 ? 0 : Math.max(0, Math.min(this.slotHeight, scrollTop - this.slotTop));
+    return Math.max(0, Math.min(Math.max(0, this.count * this.rowHeight - viewportHeight), scrollTop - inserted));
+  }
+  visibleRange(scrollTop: number, viewportHeight: number, before = 5, after = 7): { first: number; last: number } {
+    if (!this.count) return { first: 0, last: 0 };
+    return { first: Math.max(0, this.indexAt(scrollTop) - before), last: Math.min(this.count, this.indexAt(scrollTop + viewportHeight) + after) };
   }
 }

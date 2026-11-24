@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-directory-trust"
+description = "Enables the set_directory_trust command without any pre-configured scope."
+commands.allow = ["set_directory_trust"]
+
+[[permission]]
+identifier = "deny-set-directory-trust"
+description = "Denies the set_directory_trust command without any pre-configured scope."
+commands.deny = ["set_directory_trust"]
