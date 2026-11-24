@@ -18,7 +18,7 @@
 
 原生 `git clean` 的预览与确认执行已完整实现，Rust **186 unit + 141 integration（12 targets）通过**。RC10 已生产构建冻结，根布局采用受控像素侧栏、主区域 flex 与独立根分隔条，不再使用根布局 Reka Splitter；菜单、Tree、Dialog 仍使用 Reka UI。前端 **747/747**、最终脚本/许可检查 **206/206**、看板 **46/46** 及 notices **945 文件**一致性检查通过。这些是实现与自动检查事实，不代表完整使用验收。
 
-**同一 RC10 候选的真实 Windows 自动桌面 `full` 已通过 26/26，并经发行验证器复核**；这是 `automated-test`，不是 `userusage`、安装验收或完整平台认证。首轮 full01 的 driver EOF 失败记录保留；同一 RC10 exe 的本机 fixture 资源实测已通过，并经发行验证器复核，仅代表本机测量。发行门禁仍未齐备：安装静态检查的 reader 失败及同 identifier 生命周期隔离硬阻仍在，真实 `userusage` 证据不足；本轮安装/升级生命周期、干净环境与真实 WSL 性能未完成验证。旧版通过结果、浏览器样例和单元测试均不能替代当前候选验收。
+**同一 RC10 候选的真实 Windows 自动桌面 `full` 已通过 26/26，并经发行验证器复核**；这是 `automated-test`，不是 `userusage`、安装验收或完整平台认证。首轮 full01 的 driver EOF 失败记录保留；同一 RC10 exe 的本机 fixture 资源实测已通过，并经发行验证器复核，仅代表本机测量。断网 Sandbox guest 的候选新装→卸载、0.2.2→RC10 升级→卸载两例已通过，宿主注册未变。发行门禁仍未齐备：沙盒中实装应用的界面启动验收未完成，驱动创建会话超时，installed-startup 仍为 blocked，未确定产品缺陷；真实 `userusage` 证据不足，真实 WSL 性能未测。旧版通过结果、浏览器样例和单元测试均不能替代当前候选验收。
 
 当前状态与旧记录的区别见 [0.3.0 候选说明](docs/release-0.3.0.md)；旧计数、哈希、安装与性能结论仅保留在其中的[迁移前历史区](docs/release-0.3.0.md#pre-vue-history)。原始日志、截图、profile、真实路径及候选资产留在本机私有目录，不加入源码或公开证据。
 
@@ -68,7 +68,7 @@ node scripts/measure-resources.mjs --binary <同一候选exe绝对路径> --driv
 
 桌面脚本只接受新建夹具，隔离应用 profile、WebView2 与 Git 环境；真实操作通过 native UI 发起，日志来源为 `automated-test`，不是 `userusage`。资源脚本须显式选择 `--frontend vue`，其本机夹具采样不证明真实 WSL 性能。失败、Blocked 与未覆盖项保留，不能写成完整通过。
 
-安装验收另有边界：同 identifier 的安装器共享 currentUser 注册项与快捷方式；更换安装目录或 `--profile-dir` **不能隔离安装生命周期**。现有同产品安装会阻断对应测试；静态解包/哈希检查不等于新装、升级或卸载验证，后者留待明确授权的隔离环境。
+安装验收另有边界：同 identifier 的安装器共享 currentUser 注册项与快捷方式；更换安装目录或 `--profile-dir` **不能隔离安装生命周期**。本轮两例安装生命周期在独立断网 Sandbox guest 中完成，不覆盖宿主现用安装；实装应用启动仍缺 session/DOM 证据。旧静态 StartMenu.dll 元数据/解包尺寸差异失败保留为工具差异历史，不以实装通过改写或豁免。
 
 应用可通过 `--profile-dir=ABS` 指定独立配置目录；这不是安装注册隔离。浏览器 `npm run dev` 只用于开发预览，`?demo` 为样例数据，不算 native 证据，正式包不包含 demo。
 

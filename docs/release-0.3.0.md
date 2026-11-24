@@ -1,6 +1,6 @@
 # QGitGraph 0.3.0 — Vue 迁移候选（未发布）
 
-> **当前状态**：正式应用入口已迁移到 Vue，仍是本地 candidate，尚未发布 GitHub v0.3.0 tag / Release。最新已确认公开稳定版为 **v0.2.2**；[公开下载入口](https://github.com/Memento1990/QGitGraph/releases/latest)不代表本地 0.3.0 已可下载或升级。同一 RC10 的真实自动桌面 `full` 已通过 **26/26**，同 SHA 本机 fixture 资源实测也已通过并经发行验证器复核；但发行门禁仍未齐备：安装/升级生命周期未验证、真实 `userusage` 证据不足，真实 WSL 性能未测。桌面自动测试及本机资源实测通过不等于完整使用验收或平台认证。
+> **当前状态**：正式应用入口已迁移到 Vue，仍是本地 candidate，尚未发布 GitHub v0.3.0 tag / Release。最新已确认公开稳定版为 **v0.2.2**；[公开下载入口](https://github.com/Memento1990/QGitGraph/releases/latest)不代表本地 0.3.0 已可下载或升级。同一 RC10 的真实自动桌面 `full` 已通过 **26/26**，同 SHA 本机 fixture 资源实测也已通过并经发行验证器复核；断网 Sandbox guest 的候选新装→卸载与 0.2.2→RC10 升级→卸载两例已通过。但发行门禁仍未齐备：沙盒中实装应用的界面启动验收未完成，驱动创建会话超时，installed-startup 仍为 blocked，未确定产品缺陷；真实 `userusage` 证据不足，真实 WSL 性能未测。桌面自动测试及本机资源实测通过不等于完整使用验收或平台认证。
 
 ## 当前实现与使用边界
 
@@ -33,7 +33,11 @@ node scripts/measure-resources.mjs --binary <同一候选exe绝对路径> --driv
 
 **同一 RC10 exe SHA 的本机 fixture 资源实测已通过，并经发行验证器复核**，报告 SHA-256 为 `71e4d655f66b33b87ecc301ac106c235ed470055b4b0003b144cab830943ca7d`。空闲采样 **65.877 秒 / 10 样本**，受测进程组私有内存中位约 **262.94 MiB**，观测窗口单核平均 CPU 约 **0.466%**；工作集求和中位约 **476.35 MiB**（共享页可能重复计数，不是纯应用主进程内存）。5 次真实刷新 p50 / p95 约 **1307.24 / 1310.25 ms**，包含 driver 开销。仅代表本机暖 fixture，不是冷启动、真实 WSL 性能、安装或 `userusage` 验收。
 
-**安装边界**：同 product identifier 的 currentUser 安装共享注册项与快捷方式，`/D` 和 `--profile-dir` 不能隔离新装/升级/卸载。当前静态检查仍因 reader 尺寸差异失败，真实安装生命周期也因已有同产品注册而阻断；静态解包/版本/notice/哈希的单项通过不等于整体通过。Windows Sandbox 组件显示 Installed 仅作为一次 guest 隔离尝试的前置准备，不代表 guest、安装或升级已验证通过。本轮尚未完成安装、升级与卸载验证，应留待明确授权的隔离环境，不要求用户通过卸载现有版本来绕过门禁。
+**安装生命周期与启动边界**：首次断网 Sandbox guest 中，实际候选新装→卸载、0.2.2→RC10 升级→卸载两例均通过；guest 报告 SHA-256 为 `55f969a4d836f7965637980c3c673e4d95a38830accd1e6e8adb8e7b853fde75`。948 个安装文件、944 项 notice、5 个 MPL 源档以及精确哈希、版本、注册项、快捷方式、合成 profile 字节核对通过，宿主注册未变。
+
+后续两次 fresh guest 的实装应用界面启动验收均未取得 session/DOM/profile 证明。最后一次 `GET /status` 返回 200，随后 `POST /session` 约 60 秒超时，driver 报 `IncompleteMessage`，guest 报告为 failed，SHA-256 为 `e34342fcdf2c59fcbb0b035137f78cccc3266e36718a09a692161b9050a57739`。因此**沙盒中实装应用的界面启动验收未完成，installed-startup 门禁仍为 blocked**；未确定产品缺陷，也不能从进程存在推断界面启动通过，先前两例生命周期通过记录不受改写。
+
+同 product identifier 的 currentUser 注册项与快捷方式仍共享，`/D` 和 `--profile-dir` 不能隔离宿主安装；上述生命周期证据仅来自独立 guest。旧静态 StartMenu.dll 元数据声明/解包尺寸差异的 failed 记录作为工具差异历史保留，不以实装通过反推静态通过或豁免该失败。
 
 ## 公开分发状态
 
